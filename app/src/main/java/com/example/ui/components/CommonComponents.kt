@@ -1,5 +1,8 @@
 package com.example.ui.components
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -45,6 +48,7 @@ fun SandooqiCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .animateContentSize(animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing))
                 .padding(16.dp),
             content = content
         )

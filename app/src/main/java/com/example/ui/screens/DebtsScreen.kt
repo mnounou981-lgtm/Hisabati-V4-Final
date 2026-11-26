@@ -5,6 +5,17 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -63,8 +74,14 @@ fun DebtsScreen(
     var debtItem by remember { mutableStateOf("") }
     var debtAmount by remember { mutableStateOf("") }
     var debtDue by remember { mutableStateOf("") }
-    var debtActivity by remember { mutableStateOf(CatalogDefaults.expenseCategories.first()) }
+    var debtActivity by remember { mutableStateOf(CatalogDefaults.defaultDebtActivities.first()) }
     var debtPhotoUri by remember { mutableStateOf("") }
+    var showAddActivityDialog by remember { mutableStateOf(false) }
+    var newActivityLabel by remember { mutableStateOf("") }
+
+    val allDebtActivities = remember(state.settings.customDebtActivities) {
+        (CatalogDefaults.defaultDebtActivities + state.settings.customDebtActivities).distinct()
+    }
 
     var debtSearch by remember { mutableStateOf("") }
     var debtDirFilter by remember { mutableStateOf("all") } // "all", "out", "in"
@@ -130,30 +147,44 @@ fun DebtsScreen(
         state.debts.map { it.creditor.trim() }.filter { it.isNotEmpty() }.distinct().take(6)
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(
-                    0 to "المحلات والكراء",
-                    1 to "الفواتير",
-                    2 to "الأقساط",
-                    3 to "العائلة"
-                ).forEach { (idx, label) ->
-                    FilterChip(
-                        selected = subTab == idx,
-                        onClick = { subTab = idx },
-                        label = { Text(label, maxLines = 1) },
-                        modifier = Modifier.weight(1f).testTag("debts_subtab_$idx")
-                    )
-                }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
+        ) {
+            listOf(
+                0 to "المحلات والكراء",
+                1 to "الفواتير",
+                2 to "الأقساط",
+                3 to "العائلة"
+            ).forEach { (idx, label) ->
+                FilterChip(
+                    selected = subTab == idx,
+                    onClick = { subTab = idx },
+                    label = { Text(label, maxLines = 1) },
+                    modifier = Modifier.weight(1f).testTag("debts_subtab_$idx")
+                )
             }
         }
 
-        when (subTab) {
+        AnimatedContent(
+            targetState = subTab,
+            transitionSpec = {
+                (fadeIn(tween(durationMillis = 400, easing = FastOutSlowInEasing)) +
+                    slideInVertically(tween(durationMillis = 400, easing = FastOutSlowInEasing)) { it / 20 })
+                    .togetherWith(fadeOut(tween(durationMillis = 240, easing = FastOutSlowInEasing)))
+            },
+            modifier = Modifier.weight(1f),
+            label = "debts_subtab_transition"
+        ) { targetSubTab ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                when (targetSubTab) {
             0 -> {
                 // Top 3 Summary Tiles
                 item {
@@ -218,141 +249,149 @@ fun DebtsScreen(
                             )
                         }
 
-                        if (rentExpanded) {
-                            Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                FilterChip(
-                                    selected = rentIsReceivable,
-                                    onClick = { rentIsReceivable = true },
-                                    label = { Text("كراء له (إيجار لي)", maxLines = 1) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                FilterChip(
-                                    selected = !rentIsReceivable,
-                                    onClick = { rentIsReceivable = false },
-                                    label = { Text("كراء عليه (التزام)", maxLines = 1) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                CatalogDefaults.rentUnits.forEach { unit ->
+                        AnimatedVisibility(
+                            visible = rentExpanded,
+                            enter = expandVertically(tween(durationMillis = 380, easing = FastOutSlowInEasing)) +
+                                fadeIn(tween(durationMillis = 320)),
+                            exit = shrinkVertically(tween(durationMillis = 300, easing = FastOutSlowInEasing)) +
+                                fadeOut(tween(durationMillis = 240))
+                        ) {
+                            Column {
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     FilterChip(
-                                        selected = rentUnit == unit,
-                                        onClick = { rentUnit = unit },
-                                        label = { Text(unit) }
+                                        selected = rentIsReceivable,
+                                        onClick = { rentIsReceivable = true },
+                                        label = { Text("كراء له (إيجار لي)", maxLines = 1) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    FilterChip(
+                                        selected = !rentIsReceivable,
+                                        onClick = { rentIsReceivable = false },
+                                        label = { Text("كراء عليه (التزام)", maxLines = 1) },
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    value = rentParty,
-                                    onValueChange = { rentParty = it },
-                                    label = { Text("المستأجر / المؤجر") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedTextField(
-                                    value = rentAmount,
-                                    onValueChange = { rentAmount = it },
-                                    label = { Text("المبلغ (دج)") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            OutlinedTextField(
-                                value = rentDue,
-                                onValueChange = { rentDue = it },
-                                label = { Text("تاريخ الاستحقاق (اختياري YYYY-MM-DD)") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { rentImmediate = !rentImmediate }
-                            ) {
-                                Checkbox(checked = rentImmediate, onCheckedChange = { rentImmediate = it })
-                                Text("تحصيل / دفع فوري في الخزينة العائلية", style = MaterialTheme.typography.bodySmall)
-                            }
-                            Button(
-                                onClick = {
-                                    val c = MoneyFormat.parseToCents(rentAmount) ?: 0L
-                                    viewModel.addRentRecord(rentUnit, rentParty, c, rentIsReceivable, rentImmediate, rentDue)
-                                    if (rentParty.isNotBlank() && c > 0L) {
-                                        rentParty = ""; rentAmount = ""; rentDue = ""
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("save_rent_button")
-                            ) { Text("حفظ حركة الكراء") }
-
-                            if (allRentRecords.isNotEmpty()) {
-                                Spacer(Modifier.height(10.dp))
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
-                                Spacer(Modifier.height(8.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    listOf("all" to "الكل", "in" to "له", "out" to "عليه").forEach { (k, lbl) ->
+                                Spacer(Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    CatalogDefaults.rentUnits.forEach { unit ->
                                         FilterChip(
-                                            selected = rentFilter == k,
-                                            onClick = { rentFilter = k },
-                                            label = { Text(lbl, maxLines = 1) },
-                                            modifier = Modifier.weight(1f)
+                                            selected = rentUnit == unit,
+                                            onClick = { rentUnit = unit },
+                                            label = { Text(unit) }
                                         )
                                     }
                                 }
                                 Spacer(Modifier.height(6.dp))
-                                val visibleRents = when (rentFilter) {
-                                    "in" -> allRentRecords.filter { it.kind == "rent_in" }
-                                    "out" -> allRentRecords.filter { it.kind == "rent_out" }
-                                    else -> allRentRecords
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = rentParty,
+                                        onValueChange = { rentParty = it },
+                                        label = { Text("المستأجر / المؤجر") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = rentAmount,
+                                        onValueChange = { rentAmount = it },
+                                        label = { Text("المبلغ (دج)") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.weight(1f)
+                                    )
                                 }
-                                visibleRents.forEach { r ->
-                                    val isRec = r.kind == "rent_in"
-                                    val remRent = (r.amountCents - r.paidCents).coerceAtLeast(0L)
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                Spacer(Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = rentDue,
+                                    onValueChange = { rentDue = it },
+                                    label = { Text("تاريخ الاستحقاق (اختياري YYYY-MM-DD)") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.clickable { rentImmediate = !rentImmediate }
+                                ) {
+                                    Checkbox(checked = rentImmediate, onCheckedChange = { rentImmediate = it })
+                                    Text("تحصيل / دفع فوري في الخزينة العائلية", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Button(
+                                    onClick = {
+                                        val c = MoneyFormat.parseToCents(rentAmount) ?: 0L
+                                        viewModel.addRentRecord(rentUnit, rentParty, c, rentIsReceivable, rentImmediate, rentDue)
+                                        if (rentParty.isNotBlank() && c > 0L) {
+                                            rentParty = ""; rentAmount = ""; rentDue = ""
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("save_rent_button")
+                                ) { Text("حفظ حركة الكراء") }
+
+                                if (allRentRecords.isNotEmpty()) {
+                                    Spacer(Modifier.height(10.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf("all" to "الكل", "in" to "له", "out" to "عليه").forEach { (k, lbl) ->
+                                            FilterChip(
+                                                selected = rentFilter == k,
+                                                onClick = { rentFilter = k },
+                                                label = { Text(lbl, maxLines = 1) },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    val visibleRents = when (rentFilter) {
+                                        "in" -> allRentRecords.filter { it.kind == "rent_in" }
+                                        "out" -> allRentRecords.filter { it.kind == "rent_out" }
+                                        else -> allRentRecords
+                                    }
+                                    visibleRents.forEach { r ->
+                                        val isRec = r.kind == "rent_in"
+                                        val remRent = (r.amountCents - r.paidCents).coerceAtLeast(0L)
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                                         ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = "${if (isRec) "كراء له" else "كراء عليه"}: ${r.creditor} (${r.rentUnit.ifBlank { r.item }})",
-                                                    style = MaterialTheme.typography.titleSmall
-                                                )
-                                                Text(
-                                                    text = if (r.settled) {
-                                                        if (isRec) "مُحصّل • ${MoneyFormat.formatDzd(r.amountCents, privacy)}"
-                                                        else "مسدد • ${MoneyFormat.formatDzd(r.amountCents, privacy)}"
-                                                    } else {
-                                                        "قيد الانتظار • ${MoneyFormat.formatDzd(remRent, privacy)}"
-                                                    },
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = if (r.settled) MaterialTheme.colorScheme.onSurfaceVariant else if (isRec) IncomeGreen else ExpenseRed,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                if (!r.settled) {
-                                                    OutlinedButton(
-                                                        onClick = { viewModel.collectRentReceivable(r) },
-                                                        modifier = Modifier.testTag("settle_rent_${r.id}")
-                                                    ) {
-                                                        Text(if (isRec) "تحصيل" else "تسديد")
-                                                    }
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "${if (isRec) "كراء له" else "كراء عليه"}: ${r.creditor} (${r.rentUnit.ifBlank { r.item }})",
+                                                        style = MaterialTheme.typography.titleSmall
+                                                    )
+                                                    Text(
+                                                        text = if (r.settled) {
+                                                            if (isRec) "مُحصّل • ${MoneyFormat.formatDzd(r.amountCents, privacy)}"
+                                                            else "مسدد • ${MoneyFormat.formatDzd(r.amountCents, privacy)}"
+                                                        } else {
+                                                            "قيد الانتظار • ${MoneyFormat.formatDzd(remRent, privacy)}"
+                                                        },
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = if (r.settled) MaterialTheme.colorScheme.onSurfaceVariant else if (isRec) IncomeGreen else ExpenseRed,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
                                                 }
-                                                IconButton(onClick = { viewModel.deleteDebt(r.id) }) {
-                                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف حركة الكراء")
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    if (!r.settled) {
+                                                        OutlinedButton(
+                                                            onClick = { viewModel.collectRentReceivable(r) },
+                                                            modifier = Modifier.testTag("settle_rent_${r.id}")
+                                                        ) {
+                                                            Text(if (isRec) "تحصيل" else "تسديد")
+                                                        }
+                                                    }
+                                                    IconButton(onClick = { viewModel.deleteDebt(r.id) }) {
+                                                        Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف حركة الكراء")
+                                                    }
                                                 }
                                             }
                                         }
@@ -408,18 +447,41 @@ fun DebtsScreen(
                                 }
                             }
                         }
-                        Spacer(Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "قائمة اختيارات التصنيف (اختر أو أضف تسمية):",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            CatalogDefaults.expenseCategories.forEach { cat ->
+                            allDebtActivities.forEach { cat ->
                                 FilterChip(
                                     selected = debtActivity == cat,
                                     onClick = { debtActivity = cat },
                                     label = { Text(cat) }
                                 )
                             }
+                            AssistChip(
+                                onClick = {
+                                    newActivityLabel = ""
+                                    showAddActivityDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Rounded.Add,
+                                        contentDescription = "إضافة تسمية جديدة",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                label = { Text("تسمية جديدة") },
+                                modifier = Modifier.testTag("add_debt_activity_chip")
+                            )
                         }
                         Spacer(Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -643,68 +705,76 @@ fun DebtsScreen(
                                     Text(if (isRec) "تحصيل دفعة" else "تسديد دفعة")
                                 }
                             }
-                            if (expanded) {
-                                Spacer(Modifier.height(8.dp))
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-                                group.debts.forEach { d ->
-                                    val remItem = (d.amountCents - d.paidCents).coerceAtLeast(0L)
-                                    val overdueDays = if (remItem > 0L && d.dueDateISO.isNotBlank()) {
-                                        (DateUtils.daysBetweenISO(d.dueDateISO, today) ?: 0).coerceAtLeast(0)
-                                    } else 0
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "${d.item} • ${d.activity} • ${d.dateISO}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
+                            AnimatedVisibility(
+                                visible = expanded,
+                                enter = expandVertically(tween(durationMillis = 380, easing = FastOutSlowInEasing)) +
+                                    fadeIn(tween(durationMillis = 320)),
+                                exit = shrinkVertically(tween(durationMillis = 300, easing = FastOutSlowInEasing)) +
+                                    fadeOut(tween(durationMillis = 240))
+                            ) {
+                                Column {
+                                    Spacer(Modifier.height(8.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                                    group.debts.forEach { d ->
+                                        val remItem = (d.amountCents - d.paidCents).coerceAtLeast(0L)
+                                        val overdueDays = if (remItem > 0L && d.dueDateISO.isNotBlank()) {
+                                            (DateUtils.daysBetweenISO(d.dueDateISO, today) ?: 0).coerceAtLeast(0)
+                                        } else 0
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    text = "${MoneyFormat.formatDzd(d.amountCents, privacy)} (مدفوع ${MoneyFormat.formatDzd(d.paidCents, privacy)}) • متبقي ${MoneyFormat.formatDzd(remItem, privacy)}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = if (remItem > 0L) accentColor else IncomeGreen
+                                                    text = "${d.item} • ${d.activity} • ${d.dateISO}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.SemiBold
                                                 )
-                                                if (overdueDays > 0) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
                                                     Text(
-                                                        text = "(متأخر ${overdueDays}ي)",
+                                                        text = "${MoneyFormat.formatDzd(d.amountCents, privacy)} (مدفوع ${MoneyFormat.formatDzd(d.paidCents, privacy)}) • متبقي ${MoneyFormat.formatDzd(remItem, privacy)}",
                                                         style = MaterialTheme.typography.labelSmall,
-                                                        color = GoldAccent,
-                                                        fontWeight = FontWeight.Bold
+                                                        color = if (remItem > 0L) accentColor else IncomeGreen
+                                                    )
+                                                    if (overdueDays > 0) {
+                                                        Text(
+                                                            text = "(متأخر ${overdueDays}ي)",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = GoldAccent,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                                if (d.photoUri.isNotBlank()) {
+                                                    Spacer(Modifier.height(4.dp))
+                                                    AsyncImage(
+                                                        model = d.photoUri,
+                                                        contentDescription = "صورة ورقة الكريدي",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .size(44.dp)
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .clickable { previewPhotoUri = d.photoUri }
                                                     )
                                                 }
                                             }
-                                            if (d.photoUri.isNotBlank()) {
-                                                Spacer(Modifier.height(4.dp))
-                                                AsyncImage(
-                                                    model = d.photoUri,
-                                                    contentDescription = "صورة ورقة الكريدي",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .size(44.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .clickable { previewPhotoUri = d.photoUri }
-                                                )
-                                            }
-                                        }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (remItem > 0L) {
-                                                OutlinedButton(
-                                                    onClick = { viewModel.paySingleDebt(d) },
-                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                                    modifier = Modifier.heightIn(min = 40.dp).testTag("pay_single_debt_${d.id}")
-                                                ) {
-                                                    Text(if (isRec) "تحصيل البند" else "تسديد البند", maxLines = 1)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (remItem > 0L) {
+                                                    OutlinedButton(
+                                                        onClick = { viewModel.paySingleDebt(d) },
+                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                        modifier = Modifier.heightIn(min = 40.dp).testTag("pay_single_debt_${d.id}")
+                                                    ) {
+                                                        Text(if (isRec) "تحصيل البند" else "تسديد البند", maxLines = 1)
+                                                    }
                                                 }
-                                            }
-                                            IconButton(onClick = { viewModel.deleteDebt(d.id) }) {
-                                                Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف الدين")
+                                                IconButton(onClick = { viewModel.deleteDebt(d.id) }) {
+                                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف الدين")
+                                                }
                                             }
                                         }
                                     }
@@ -1031,6 +1101,41 @@ fun DebtsScreen(
             }
         }
     }
+    }
+    }
+
+    if (showAddActivityDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddActivityDialog = false },
+            title = { Text("إضافة تسمية دين جديدة") },
+            text = {
+                OutlinedTextField(
+                    value = newActivityLabel,
+                    onValueChange = { newActivityLabel = it },
+                    label = { Text("اسم التصنيف (مثل: مخبزة، حلاقة، كوزميتيك)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("new_debt_activity_input")
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val cleaned = newActivityLabel.trim()
+                        if (cleaned.isNotEmpty()) {
+                            viewModel.addCustomDebtActivity(cleaned)
+                            debtActivity = cleaned
+                            showAddActivityDialog = false
+                            newActivityLabel = ""
+                        }
+                    },
+                    modifier = Modifier.testTag("confirm_add_debt_activity_button")
+                ) { Text("إضافة") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddActivityDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
 
     if (payingCreditor != null) {
         val (group, isRec) = payingCreditor!!
@@ -1099,6 +1204,11 @@ private fun InstallmentPlanCard(
     val isCompleted = plan.paidMonths >= plan.totalMonths
     val isPaidThisMonth = plan.lastPaidYM == currentYM
     val progress = (plan.paidMonths.toFloat() / totalMonthsSafe.toFloat()).coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "plan_progress_${plan.id}"
+    )
 
     SandooqiCard {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1168,7 +1278,7 @@ private fun InstallmentPlanCard(
                 }
             }
             LinearProgressIndicator(
-                progress = { progress },
+                progress = { animatedProgress },
                 color = if (isCompleted) IncomeGreen else badgeColor,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.fillMaxWidth().height(6.dp)

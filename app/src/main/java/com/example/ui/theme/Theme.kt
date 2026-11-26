@@ -23,7 +23,13 @@ data class SandooqiPaletteSpec(
     val lightPrimary: Color,
     val lightContainer: Color,
     val darkPrimary: Color,
-    val darkContainer: Color
+    val darkContainer: Color,
+    val lightSecondary: Color,
+    val lightSecondaryContainer: Color,
+    val lightOnSecondaryContainer: Color,
+    val darkSecondary: Color,
+    val darkSecondaryContainer: Color,
+    val darkOnSecondaryContainer: Color
 )
 
 object SandooqiPalettes {
@@ -32,48 +38,72 @@ object SandooqiPalettes {
         label = "أزرق ملكي",
         headerStart = NavyHeaderStart,
         headerEnd = NavyHeaderEnd,
-        darkHeaderStart = Color(0xFF0F172A),
+        darkHeaderStart = Color(0xFF091126),
         darkHeaderEnd = Color(0xFF1E3A8A),
         lightPrimary = NavyPrimary,
         lightContainer = NavyContainer,
         darkPrimary = NavyBright,
-        darkContainer = Color(0xFF172554)
+        darkContainer = Color(0xFF1E3A8A),
+        lightSecondary = TealPrimary,
+        lightSecondaryContainer = Color(0xFFCCFBF1),
+        lightOnSecondaryContainer = Color(0xFF0F766E),
+        darkSecondary = Color(0xFF2DD4BF),
+        darkSecondaryContainer = Color(0xFF134E4A),
+        darkOnSecondaryContainer = Color(0xFF99F6E4)
     )
     val teal = SandooqiPaletteSpec(
         key = "teal",
-        label = "بترولي عصري",
+        label = "بترولي زمردي",
         headerStart = TealHeaderStart,
         headerEnd = TealHeaderEnd,
-        darkHeaderStart = Color(0xFF0A2029),
-        darkHeaderEnd = Color(0xFF115E59),
+        darkHeaderStart = Color(0xFF061E26),
+        darkHeaderEnd = Color(0xFF0F766E),
         lightPrimary = TealPrimary,
         lightContainer = TealContainer,
         darkPrimary = TealBright,
-        darkContainer = Color(0xFF134E4A)
+        darkContainer = Color(0xFF115E59),
+        lightSecondary = NavyPrimary,
+        lightSecondaryContainer = NavyContainer,
+        lightOnSecondaryContainer = NavyHeaderEnd,
+        darkSecondary = Color(0xFF38BDF8),
+        darkSecondaryContainer = Color(0xFF0C4A6E),
+        darkOnSecondaryContainer = Color(0xFFBAE6FD)
     )
     val violet = SandooqiPaletteSpec(
         key = "violet",
         label = "أرجواني فخم",
         headerStart = VioletHeaderStart,
         headerEnd = VioletHeaderEnd,
-        darkHeaderStart = Color(0xFF17143A),
-        darkHeaderEnd = Color(0xFF4C1D95),
+        darkHeaderStart = Color(0xFF150E36),
+        darkHeaderEnd = Color(0xFF5B21B6),
         lightPrimary = VioletPrimary,
         lightContainer = VioletContainer,
         darkPrimary = VioletBright,
-        darkContainer = Color(0xFF2E1065)
+        darkContainer = Color(0xFF4C1D95),
+        lightSecondary = Color(0xFF0284C7),
+        lightSecondaryContainer = Color(0xFFE0F2FE),
+        lightOnSecondaryContainer = Color(0xFF075985),
+        darkSecondary = Color(0xFF2DD4BF),
+        darkSecondaryContainer = Color(0xFF164E63),
+        darkOnSecondaryContainer = Color(0xFFA5F3FC)
     )
     val charcoal = SandooqiPaletteSpec(
         key = "charcoal",
-        label = "فحمي أنيق",
+        label = "جرافيت وسماوي",
         headerStart = CharcoalHeaderStart,
         headerEnd = CharcoalHeaderEnd,
-        darkHeaderStart = Color(0xFF111114),
-        darkHeaderEnd = Color(0xFF27272A),
+        darkHeaderStart = Color(0xFF0D1321),
+        darkHeaderEnd = Color(0xFF1E293B),
         lightPrimary = CharcoalPrimary,
         lightContainer = CharcoalContainer,
         darkPrimary = CharcoalBright,
-        darkContainer = Color(0xFF27272A)
+        darkContainer = Color(0xFF1E3A5F),
+        lightSecondary = TealPrimary,
+        lightSecondaryContainer = TealContainer,
+        lightOnSecondaryContainer = Color(0xFF115E59),
+        darkSecondary = Color(0xFF38BDF8),
+        darkSecondaryContainer = Color(0xFF172554),
+        darkOnSecondaryContainer = Color(0xFFDBEAFE)
     )
 
     val all = listOf(navy, teal, violet, charcoal)
@@ -117,15 +147,15 @@ fun SandooqiTheme(
     val colorScheme = if (darkTheme) {
         darkColorScheme(
             primary = spec.darkPrimary,
-            onPrimary = Color(0xFF0B1120),
+            onPrimary = Color.White,
             primaryContainer = spec.darkContainer,
-            onPrimaryContainer = Color(0xFFE2E8F0),
-            secondary = GoldAccent,
-            onSecondary = Color(0xFF451A03),
-            secondaryContainer = Color(0xFF422006),
-            onSecondaryContainer = GoldBadgeBg,
+            onPrimaryContainer = Color(0xFFF1F5F9),
+            secondary = spec.darkSecondary,
+            onSecondary = Color(0xFF042F2E),
+            secondaryContainer = spec.darkSecondaryContainer,
+            onSecondaryContainer = spec.darkOnSecondaryContainer,
             tertiary = Color(0xFFA78BFA),
-            onTertiary = Color(0xFF2E1065),
+            onTertiary = Color.White,
             tertiaryContainer = Color(0xFF3B0764),
             onTertiaryContainer = Color(0xFFEDE9FE),
             background = DarkBg,
@@ -135,9 +165,9 @@ fun SandooqiTheme(
             surfaceVariant = DarkSurfaceVariant,
             onSurfaceVariant = DarkTextMuted,
             outline = DarkBorder,
-            error = Color(0xFFFB7185),
-            onError = Color(0xFF4C0519),
-            errorContainer = Color(0xFF3B121D),
+            error = ExpenseRed,
+            onError = Color.White,
+            errorContainer = Color(0xFF3F1221),
             onErrorContainer = Color(0xFFFECDD3)
         )
     } else {
@@ -146,10 +176,10 @@ fun SandooqiTheme(
             onPrimary = Color.White,
             primaryContainer = spec.lightContainer,
             onPrimaryContainer = spec.headerStart,
-            secondary = GoldAccent,
-            onSecondary = Color(0xFF451A03),
-            secondaryContainer = GoldSoft,
-            onSecondaryContainer = GoldInk,
+            secondary = spec.lightSecondary,
+            onSecondary = Color.White,
+            secondaryContainer = spec.lightSecondaryContainer,
+            onSecondaryContainer = spec.lightOnSecondaryContainer,
             tertiary = SewingViolet,
             onTertiary = Color.White,
             tertiaryContainer = SewingVioletSoft,

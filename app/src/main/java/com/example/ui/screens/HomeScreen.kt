@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,7 +62,7 @@ fun HomeScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Hero Expected Balance Card
@@ -121,6 +125,11 @@ fun HomeScreen(
         item {
             val budget = state.settings.monthlyFamilyBudgetCents
             val budgetProgress = if (budget > 0L) min(1f, spentSoFar.toFloat() / budget.toFloat()) else 0f
+            val animatedBudgetProgress by animateFloatAsState(
+                targetValue = budgetProgress,
+                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+                label = "home_runway_progress"
+            )
             SandooqiCard {
                 SectionHeader(
                     title = "مؤشر الكفاية والميزانية الشهرية",
@@ -129,7 +138,7 @@ fun HomeScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 LinearProgressIndicator(
-                    progress = { budgetProgress },
+                    progress = { animatedBudgetProgress },
                     color = if (budgetProgress >= 0.9f) ExpenseRed else EmeraldMain,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier

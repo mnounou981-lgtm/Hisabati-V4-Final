@@ -492,6 +492,18 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
         showToast(if (isReceivable) "تم تسجيل مستحق لك عند ${creditor.trim()}" else "تم تسجيل دين عند ${creditor.trim()}")
     }
 
+    fun addCustomDebtActivity(label: String) = viewModelScope.launch {
+        val cleaned = label.trim()
+        if (cleaned.isEmpty()) return@launch
+        val existing = CatalogDefaults.defaultDebtActivities + uiState.value.settings.customDebtActivities
+        if (existing.any { it.equals(cleaned, ignoreCase = true) }) {
+            showToast("التسمية موجودة مسبقاً")
+            return@launch
+        }
+        prefs.updateCustomDebtActivities(uiState.value.settings.customDebtActivities + cleaned)
+        showToast("تمت إضافة تسمية $cleaned")
+    }
+
     fun payCreditorAmount(creditor: String, paymentCents: Long, isReceivable: Boolean = false) = viewModelScope.launch {
         if (paymentCents <= 0L) return@launch
         val targetKinds = if (isReceivable) listOf("home_debt_in") else listOf("home_debt", "bill_debt", "rent_out")

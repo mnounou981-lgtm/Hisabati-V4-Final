@@ -8,7 +8,7 @@ import kotlin.math.roundToLong
 
 object MoneyFormat {
     private val symbols = DecimalFormatSymbols(Locale.FRENCH).apply {
-        groupingSeparator = ' '
+        groupingSeparator = '\u00A0'
         decimalSeparator = '.'
     }
     private val wholeFormatter = DecimalFormat("#,##0", symbols)
@@ -20,6 +20,9 @@ object MoneyFormat {
         val normalized = normalizeDigits(raw)
             .replace(",", ".")
             .replace(" ", "")
+            .replace("\u00A0", "")
+            .replace("\u2066", "")
+            .replace("\u2069", "")
             .trim()
         if (normalized.isEmpty()) return null
         val value = normalized.toDoubleOrNull() ?: return null
@@ -40,7 +43,7 @@ object MoneyFormat {
         } else {
             decimalFormatter.format(absCents / 100.0)
         }
-        return "$sign$numStr دج"
+        return "\u2066$sign$numStr\u2069 دج"
     }
 
     fun formatNumberOnly(cents: Long): String {

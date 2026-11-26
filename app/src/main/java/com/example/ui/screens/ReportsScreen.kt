@@ -89,7 +89,7 @@ fun ReportsScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -192,6 +192,14 @@ fun ReportsScreen(
                     Spacer(Modifier.height(8.dp))
                     categoryTotals.take(6).forEach { (cat, cents) ->
                         val ratio = min(1f, cents.toFloat() / totalOut.toFloat())
+                        val animatedRatio by androidx.compose.animation.core.animateFloatAsState(
+                            targetValue = ratio,
+                            animationSpec = androidx.compose.animation.core.tween(
+                                durationMillis = 650,
+                                easing = androidx.compose.animation.core.FastOutSlowInEasing
+                            ),
+                            label = "rep_cat_$cat"
+                        )
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -200,7 +208,7 @@ fun ReportsScreen(
                             Text("${MoneyFormat.formatDzd(cents, privacy)} (${(ratio * 100).toInt()}%)", style = MaterialTheme.typography.labelMedium)
                         }
                         LinearProgressIndicator(
-                            progress = { ratio },
+                            progress = { animatedRatio },
                             color = SewingViolet,
                             modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(4.dp))
                         )

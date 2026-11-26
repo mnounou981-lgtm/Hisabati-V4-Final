@@ -20,7 +20,8 @@ class SandooqiDomainUnitTest {
     fun moneyFormat_parsesArabicAndLatinNumeralsAccurately() {
         assertEquals(150_000_00L, MoneyFormat.parseToCents("١٥٠٠٠٠"))
         assertEquals(125_50L, MoneyFormat.parseToCents("125,5"))
-        assertEquals("150 000 دج", MoneyFormat.formatDzd(150_000_00L))
+        assertEquals("\u2066150\u00A0000\u2069 دج", MoneyFormat.formatDzd(150_000_00L))
+        assertEquals("\u2066-150\u00A0000\u2069 دج", MoneyFormat.formatDzd(-150_000_00L))
         assertEquals("•••• دج", MoneyFormat.formatDzd(150_000_00L, privacyMode = true))
     }
 
@@ -172,6 +173,9 @@ class SandooqiDomainUnitTest {
         assertTrue(CatalogDefaults.categoryTabs.any { it.first == "spices" && it.second == "توابل" })
         assertTrue(CatalogDefaults.products.count { it.categoryKey == "spices" } >= 10)
         assertTrue(CatalogDefaults.expenseCategories.contains("توابل وبهارات"))
+        listOf("مواد غذائية", "دواء", "كنكايري", "أدوات مدرسية", "دخان وتبغ", "خضر", "لحوم", "دجاج").forEach {
+            assertTrue("Missing debt activity: $it", CatalogDefaults.defaultDebtActivities.contains(it))
+        }
 
         val rec = CreditorDebtEntity(
             id = 1L, creditor = "سعيد", item = "سلفة",

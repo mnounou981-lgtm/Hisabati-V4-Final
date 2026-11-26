@@ -37,6 +37,7 @@ data class SandooqiSettings(
     val quickExpenses: List<QuickExpensePreset> = CatalogDefaults.defaultQuickExpenses,
     val customProducts: List<CatalogProduct> = emptyList(),
     val budgetEnvelopes: List<BudgetEnvelopeItem> = CatalogDefaults.defaultBudgetEnvelopes,
+    val customDebtActivities: List<String> = emptyList(),
     val themeStyle: String = "navy"
 )
 
@@ -61,6 +62,7 @@ class SandooqiPreferences(private val context: Context) {
         val QUICK_EXPENSES_JSON = stringPreferencesKey("quick_expenses_json")
         val CUSTOM_PRODUCTS_JSON = stringPreferencesKey("custom_products_json")
         val BUDGET_ENVELOPES_JSON = stringPreferencesKey("budget_envelopes_json")
+        val CUSTOM_DEBT_ACTIVITIES = stringPreferencesKey("custom_debt_activities_csv")
     }
 
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
@@ -91,6 +93,12 @@ class SandooqiPreferences(private val context: Context) {
             runCatching { envelopesAdapter.fromJson(raw) }.getOrNull()
         } ?: CatalogDefaults.defaultBudgetEnvelopes
 
+        val customDebtActs = (prefs[Keys.CUSTOM_DEBT_ACTIVITIES] ?: "")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+
         SandooqiSettings(
             darkMode = prefs[Keys.DARK_MODE] ?: false,
             privacyMode = prefs[Keys.PRIVACY_MODE] ?: false,
@@ -110,6 +118,7 @@ class SandooqiPreferences(private val context: Context) {
             quickExpenses = quickList,
             customProducts = customList,
             budgetEnvelopes = envelopesList,
+            customDebtActivities = customDebtActs,
             themeStyle = prefs[Keys.THEME_STYLE] ?: "navy"
         )
     }
@@ -201,6 +210,13 @@ class SandooqiPreferences(private val context: Context) {
         }
     }
 
+    suspend fun updateCustomDebtActivities(items: List<String>) {
+        val cleaned = items.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        context.sandooqiDataStore.edit {
+            it[Keys.CUSTOM_DEBT_ACTIVITIES] = cleaned.joinToString(",")
+        }
+    }
+
     suspend fun applySettings(settings: SandooqiSettings) {
         context.sandooqiDataStore.edit {
             it[Keys.DARK_MODE] = settings.darkMode
@@ -221,6 +237,7 @@ class SandooqiPreferences(private val context: Context) {
             it[Keys.QUICK_EXPENSES_JSON] = quickAdapter.toJson(settings.quickExpenses)
             it[Keys.CUSTOM_PRODUCTS_JSON] = productsAdapter.toJson(settings.customProducts)
             it[Keys.BUDGET_ENVELOPES_JSON] = envelopesAdapter.toJson(settings.budgetEnvelopes)
+            it[Keys.CUSTOM_DEBT_ACTIVITIES] = settings.customDebtActivities.joinToString(",")
             it[Keys.THEME_STYLE] = settings.themeStyle
         }
     }

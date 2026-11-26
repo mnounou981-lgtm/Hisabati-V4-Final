@@ -4,6 +4,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -110,15 +118,16 @@ fun ExpensesScreen(
     val monthBudget = state.settings.monthlyFamilyBudgetCents.takeIf { it > 0L }
         ?: state.currentReport.family.externalIncomeCents
     val progress = if (monthBudget > 0L) min(1f, monthSpent.toFloat() / monthBudget.toFloat()) else 0f
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "expenses_budget_progress"
+    )
     val debtsById = remember(state.debts) { state.debts.associateBy { it.id } }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         if (state.settings.familyEntryOnlyMode) {
-            item {
+            Box(modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)) {
                 SandooqiCard(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -137,49 +146,67 @@ fun ExpensesScreen(
             }
         }
 
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = subTab == 0,
-                    onClick = { subTab = 0 },
-                    label = { Text("تسجيل المصاريف") },
-                    modifier = Modifier.weight(1f).testTag("expenses_subtab_record")
-                )
-                FilterChip(
-                    selected = subTab == 1,
-                    onClick = { subTab = 1 },
-                    label = { Text("قائمة السوق (${state.marketItems.count { !it.isDone }})") },
-                    modifier = Modifier.weight(1f).testTag("expenses_subtab_market")
-                )
-            }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
+        ) {
+            FilterChip(
+                selected = subTab == 0,
+                onClick = { subTab = 0 },
+                label = { Text("تسجيل المصاريف") },
+                modifier = Modifier.weight(1f).testTag("expenses_subtab_record")
+            )
+            FilterChip(
+                selected = subTab == 1,
+                onClick = { subTab = 1 },
+                label = { Text("قائمة السوق (${state.marketItems.count { !it.isDone }})") },
+                modifier = Modifier.weight(1f).testTag("expenses_subtab_market")
+            )
         }
 
-        if (subTab == 0) {
-            // Unified Monthly Budget Progress Bar
-            item {
-                SandooqiCard {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("ميزانية العائلة الموحدة", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            "${MoneyFormat.formatDzd(monthSpent, privacy)} / ${MoneyFormat.formatDzd(monthBudget, privacy)}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (progress >= 0.9f) ExpenseRed else EmeraldMain
-                        )
+        AnimatedContent(
+            targetState = subTab,
+            transitionSpec = {
+                (fadeIn(tween(durationMillis = 400, easing = FastOutSlowInEasing)) +
+                    slideInVertically(tween(durationMillis = 400, easing = FastOutSlowInEasing)) { it / 20 })
+                    .togetherWith(fadeOut(tween(durationMillis = 240, easing = FastOutSlowInEasing)))
+            },
+            modifier = Modifier.weight(1f),
+            label = "expenses_subtab_transition"
+        ) { targetSubTab ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (targetSubTab == 0) {
+                    // Unified Monthly Budget Progress Bar
+                    item {
+                        SandooqiCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("ميزانية العائلة الموحدة", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "${MoneyFormat.formatDzd(monthSpent, privacy)} / ${MoneyFormat.formatDzd(monthBudget, privacy)}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (progress >= 0.9f) ExpenseRed else EmeraldMain
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            LinearProgressIndicator(
+                                progress = { animatedProgress },
+                                color = if (progress >= 0.9f) ExpenseRed else EmeraldMain,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                            )
+                        }
                     }
-                    Spacer(Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        color = if (progress >= 0.9f) ExpenseRed else EmeraldMain,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                    )
-                }
-            }
 
             // Quick 1-Tap Expense Chips
             item {
@@ -790,6 +817,8 @@ fun ExpensesScreen(
                     }
                 }
             }
+        }
+        }
         }
     }
 

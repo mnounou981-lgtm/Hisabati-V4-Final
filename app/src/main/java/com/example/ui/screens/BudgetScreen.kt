@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -84,6 +87,11 @@ fun BudgetScreen(
     val allocatedFraction = if (effectiveBudgetTotalCents > 0L) {
         (allocatedSumCents.toFloat() / effectiveBudgetTotalCents.toFloat()).coerceIn(0f, 1f)
     } else 0f
+    val animatedAllocatedFraction by animateFloatAsState(
+        targetValue = allocatedFraction,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "budget_allocated_progress"
+    )
     val allocatedPct = if (effectiveBudgetTotalCents > 0L) {
         ((allocatedSumCents * 100.0) / effectiveBudgetTotalCents).toInt()
     } else 0
@@ -91,7 +99,7 @@ fun BudgetScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Monthly Budget Organizer (matching V12 design)
@@ -198,7 +206,7 @@ fun BudgetScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 LinearProgressIndicator(
-                    progress = { allocatedFraction },
+                    progress = { animatedAllocatedFraction },
                     color = if (remainingBudgetCents >= 0L) IncomeGreen else ExpenseRed,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(6.dp))
@@ -451,6 +459,11 @@ fun BudgetScreen(
 
         items(state.goals, key = { it.id }) { goal ->
             val pct = if (goal.targetCents > 0L) min(1f, goal.savedCents.toFloat() / goal.targetCents.toFloat()) else 0f
+            val animatedGoalPct by animateFloatAsState(
+                targetValue = pct,
+                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+                label = "goal_progress_${goal.id}"
+            )
             val remaining = (goal.targetCents - goal.savedCents).coerceAtLeast(0L)
             SandooqiCard {
                 Row(
@@ -471,7 +484,7 @@ fun BudgetScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(
-                    progress = { pct },
+                    progress = { animatedGoalPct },
                     color = IncomeGreen,
                     modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(6.dp))
                 )
@@ -555,6 +568,11 @@ fun BudgetScreen(
 
         items(state.seasonalBudgets, key = { it.id }) { s ->
             val pct = if (s.targetCents > 0L) min(1f, s.savedCents.toFloat() / s.targetCents.toFloat()) else 0f
+            val animatedSeasonPct by animateFloatAsState(
+                targetValue = pct,
+                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+                label = "season_progress_${s.id}"
+            )
             SandooqiCard {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -574,7 +592,7 @@ fun BudgetScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 LinearProgressIndicator(
-                    progress = { pct },
+                    progress = { animatedSeasonPct },
                     color = GoldAccent,
                     modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(4.dp))
                 )

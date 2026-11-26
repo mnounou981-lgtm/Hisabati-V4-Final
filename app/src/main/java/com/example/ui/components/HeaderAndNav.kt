@@ -1,5 +1,8 @@
 package com.example.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,6 +12,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,44 +50,45 @@ fun SandooqiTopHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Right (Start in RTL): "ص" emblem + Brand Title + Subtitle
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .background(Color.White.copy(alpha = 0.14f))
                     ) {
                         Text(
                             text = "ص",
                             color = GoldBadgeBg,
-                            fontFamily = CairoDisplayFontFamily,
+                            fontFamily = AlexandriaDisplayFontFamily,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 22.sp
+                            fontSize = 20.sp
                         )
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text(
                             text = "صندوقي",
                             color = Color.White,
-                            fontFamily = CairoDisplayFontFamily,
+                            fontFamily = AlexandriaDisplayFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
+                            fontSize = 19.sp,
                             maxLines = 1
                         )
                         Text(
-                            text = "إدارة مالية ذكية • ${DateUtils.formatYM(currentYM)}",
-                            color = Color.White.copy(alpha = 0.85f),
+                            text = "خزينة ذكية • ${DateUtils.formatYM(currentYM)}",
+                            color = Color.White.copy(alpha = 0.88f),
                             style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -93,7 +98,7 @@ fun SandooqiTopHeader(
                 // Left (End in RTL): Dark Mode, Privacy, Voice, Search
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     HeaderActionButton(
                         icon = if (darkMode) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
@@ -141,8 +146,8 @@ private fun HeaderActionButton(
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .size(37.dp)
+            .clip(RoundedCornerShape(11.dp))
             .background(
                 if (isActive) GoldBadgeBg.copy(alpha = 0.28f)
                 else Color.White.copy(alpha = 0.14f)
@@ -154,7 +159,7 @@ private fun HeaderActionButton(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isActive) GoldBadgeBg else Color.White,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(19.dp)
         )
     }
 }
@@ -213,9 +218,17 @@ private fun NavGridRow(
         for (tab in tabs) {
             val isSelected = tab == selectedTab
             val lockedOut = familyEntryOnlyMode && tab != MainNavTab.EXPENSES
-            val activeBg = MaterialTheme.colorScheme.primaryContainer
-            val activeTint = MaterialTheme.colorScheme.primary
-            val inactiveTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (lockedOut) 0.4f else 0.9f)
+            val bgColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                label = "nav_bg_${tab.route}"
+            )
+            val tintColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (lockedOut) 0.4f else 0.9f),
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                label = "nav_tint_${tab.route}"
+            )
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -224,7 +237,7 @@ private fun NavGridRow(
                     .weight(1f)
                     .heightIn(min = 50.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (isSelected) activeBg else Color.Transparent)
+                    .background(bgColor)
                     .clickable(enabled = !lockedOut) { onSelectTab(tab) }
                     .padding(vertical = 5.dp, horizontal = 2.dp)
                     .testTag("nav_tab_${tab.route}")
@@ -232,13 +245,13 @@ private fun NavGridRow(
                 Icon(
                     imageVector = tabIcon(tab, isSelected),
                     contentDescription = tab.label,
-                    tint = if (isSelected) activeTint else inactiveTint,
+                    tint = tintColor,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = tab.label,
-                    color = if (isSelected) activeTint else inactiveTint,
+                    color = tintColor,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,

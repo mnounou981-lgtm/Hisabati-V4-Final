@@ -5,6 +5,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -125,15 +132,27 @@ fun SandooqiApp(viewModel: SandooqiViewModel = viewModel()) {
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                when (state.selectedTab) {
-                    MainNavTab.HOME -> HomeScreen(state = state, viewModel = viewModel)
-                    MainNavTab.TREASURY -> TreasuryScreen(state = state, viewModel = viewModel)
-                    MainNavTab.EXPENSES -> ExpensesScreen(state = state, viewModel = viewModel)
-                    MainNavTab.DEBTS -> DebtsScreen(state = state, viewModel = viewModel)
-                    MainNavTab.BUDGET -> BudgetScreen(state = state, viewModel = viewModel)
-                    MainNavTab.SEWING -> SewingScreen(state = state, viewModel = viewModel)
-                    MainNavTab.REPORTS -> ReportsScreen(state = state, viewModel = viewModel)
-                    MainNavTab.TOOLS -> ToolsScreen(state = state, viewModel = viewModel)
+                AnimatedContent(
+                    targetState = state.selectedTab,
+                    transitionSpec = {
+                        (fadeIn(tween(durationMillis = 420, easing = FastOutSlowInEasing)) +
+                            slideInVertically(tween(durationMillis = 420, easing = FastOutSlowInEasing)) { it / 18 })
+                            .togetherWith(
+                                fadeOut(tween(durationMillis = 260, easing = FastOutSlowInEasing))
+                            )
+                    },
+                    label = "main_tab_transition"
+                ) { targetTab ->
+                    when (targetTab) {
+                        MainNavTab.HOME -> HomeScreen(state = state, viewModel = viewModel)
+                        MainNavTab.TREASURY -> TreasuryScreen(state = state, viewModel = viewModel)
+                        MainNavTab.EXPENSES -> ExpensesScreen(state = state, viewModel = viewModel)
+                        MainNavTab.DEBTS -> DebtsScreen(state = state, viewModel = viewModel)
+                        MainNavTab.BUDGET -> BudgetScreen(state = state, viewModel = viewModel)
+                        MainNavTab.SEWING -> SewingScreen(state = state, viewModel = viewModel)
+                        MainNavTab.REPORTS -> ReportsScreen(state = state, viewModel = viewModel)
+                        MainNavTab.TOOLS -> ToolsScreen(state = state, viewModel = viewModel)
+                    }
                 }
             }
 
