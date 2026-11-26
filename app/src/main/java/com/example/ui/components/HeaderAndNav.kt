@@ -28,100 +28,104 @@ fun SandooqiTopHeader(
     currentYM: String,
     darkMode: Boolean,
     privacyMode: Boolean,
+    themeStyle: String = "navy",
     onToggleDarkMode: () -> Unit,
     onTogglePrivacy: () -> Unit,
     onOpenVoice: () -> Unit,
     onOpenSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val headerBg = if (darkMode) DarkEmeraldHeader else EmeraldHeader
-    Surface(
-        color = headerBg,
-        shadowElevation = 4.dp,
-        modifier = modifier.fillMaxWidth()
+    val headerBrush = SandooqiPalettes.headerBrush(themeStyle, darkMode)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(headerBrush)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Right (Start in RTL): "ص" emblem + Brand Title + Subtitle
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.weight(1f)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.White.copy(alpha = 0.16f))
+                // Right (Start in RTL): "ص" emblem + Brand Title + Subtitle
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = "ص",
-                        color = GoldBadgeBg,
-                        fontFamily = CairoDisplayFontFamily,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 22.sp
-                    )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White.copy(alpha = 0.14f))
+                    ) {
+                        Text(
+                            text = "ص",
+                            color = GoldBadgeBg,
+                            fontFamily = CairoDisplayFontFamily,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 22.sp
+                        )
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = "صندوقي",
+                            color = Color.White,
+                            fontFamily = CairoDisplayFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "إدارة مالية ذكية • ${DateUtils.formatYM(currentYM)}",
+                            color = Color.White.copy(alpha = 0.85f),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text(
-                        text = "صندوقي",
-                        color = Color.White,
-                        fontFamily = CairoDisplayFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        maxLines = 1
-                    )
-                    Text(
-                        text = "إدارة مالية ذكية • ${DateUtils.formatYM(currentYM)}",
-                        color = Color.White.copy(alpha = 0.88f),
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
 
-            // Left (End in RTL): Dark Mode, Privacy, Voice, Search
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                HeaderActionButton(
-                    icon = if (darkMode) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
-                    contentDescription = if (darkMode) "الوضع النهاري" else "الوضع الليلي",
-                    testTag = "header_dark_mode_button",
-                    isActive = darkMode,
-                    onClick = onToggleDarkMode
-                )
-                HeaderActionButton(
-                    icon = if (privacyMode) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                    contentDescription = "إخفاء المبالغ",
-                    testTag = "header_privacy_button",
-                    isActive = privacyMode,
-                    onClick = onTogglePrivacy
-                )
-                HeaderActionButton(
-                    icon = Icons.Rounded.Mic,
-                    contentDescription = "إدخال صوتي سريع",
-                    testTag = "header_voice_button",
-                    isActive = false,
-                    onClick = onOpenVoice
-                )
-                HeaderActionButton(
-                    icon = Icons.Rounded.Search,
-                    contentDescription = "بحث شامل",
-                    testTag = "header_search_button",
-                    isActive = false,
-                    onClick = onOpenSearch
-                )
+                // Left (End in RTL): Dark Mode, Privacy, Voice, Search
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    HeaderActionButton(
+                        icon = if (darkMode) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
+                        contentDescription = if (darkMode) "الوضع النهاري" else "الوضع الليلي",
+                        testTag = "header_dark_mode_button",
+                        isActive = darkMode,
+                        onClick = onToggleDarkMode
+                    )
+                    HeaderActionButton(
+                        icon = if (privacyMode) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                        contentDescription = "إخفاء المبالغ",
+                        testTag = "header_privacy_button",
+                        isActive = privacyMode,
+                        onClick = onTogglePrivacy
+                    )
+                    HeaderActionButton(
+                        icon = Icons.Rounded.Mic,
+                        contentDescription = "إدخال صوتي سريع",
+                        testTag = "header_voice_button",
+                        isActive = false,
+                        onClick = onOpenVoice
+                    )
+                    HeaderActionButton(
+                        icon = Icons.Rounded.Search,
+                        contentDescription = "بحث شامل",
+                        testTag = "header_search_button",
+                        isActive = false,
+                        onClick = onOpenSearch
+                    )
+                }
             }
+            HorizontalDivider(color = Color.White.copy(alpha = 0.12f), thickness = 0.8.dp)
         }
     }
 }

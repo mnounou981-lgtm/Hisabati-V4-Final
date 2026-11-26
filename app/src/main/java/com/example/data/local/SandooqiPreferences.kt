@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.domain.BudgetEnvelopeItem
 import com.example.domain.CatalogDefaults
 import com.example.domain.CatalogProduct
 import com.example.domain.QuickExpensePreset
@@ -34,12 +35,15 @@ data class SandooqiSettings(
     val activeFamilyMember: String = "إسلام",
     val familyMembers: List<String> = listOf("إسلام", "محمد", "يوسف", "نعيمة"),
     val quickExpenses: List<QuickExpensePreset> = CatalogDefaults.defaultQuickExpenses,
-    val customProducts: List<CatalogProduct> = emptyList()
+    val customProducts: List<CatalogProduct> = emptyList(),
+    val budgetEnvelopes: List<BudgetEnvelopeItem> = CatalogDefaults.defaultBudgetEnvelopes,
+    val themeStyle: String = "navy"
 )
 
 class SandooqiPreferences(private val context: Context) {
     private object Keys {
         val DARK_MODE = booleanPreferencesKey("dark_mode")
+        val THEME_STYLE = stringPreferencesKey("theme_style")
         val PRIVACY_MODE = booleanPreferencesKey("privacy_mode")
         val SOUND_ENABLED = booleanPreferencesKey("sound_enabled")
         val MONTHLY_FAMILY_BUDGET = longPreferencesKey("monthly_family_budget_cents")
@@ -56,6 +60,7 @@ class SandooqiPreferences(private val context: Context) {
         val FAMILY_MEMBERS = stringPreferencesKey("family_members_csv")
         val QUICK_EXPENSES_JSON = stringPreferencesKey("quick_expenses_json")
         val CUSTOM_PRODUCTS_JSON = stringPreferencesKey("custom_products_json")
+        val BUDGET_ENVELOPES_JSON = stringPreferencesKey("budget_envelopes_json")
     }
 
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
@@ -64,6 +69,9 @@ class SandooqiPreferences(private val context: Context) {
     )
     private val productsAdapter = moshi.adapter<List<CatalogProduct>>(
         Types.newParameterizedType(List::class.java, CatalogProduct::class.java)
+    )
+    private val envelopesAdapter = moshi.adapter<List<BudgetEnvelopeItem>>(
+        Types.newParameterizedType(List::class.java, BudgetEnvelopeItem::class.java)
     )
 
     val settingsFlow: Flow<SandooqiSettings> = context.sandooqiDataStore.data.map { prefs ->
@@ -78,6 +86,10 @@ class SandooqiPreferences(private val context: Context) {
         val customList = prefs[Keys.CUSTOM_PRODUCTS_JSON]?.let { raw ->
             runCatching { productsAdapter.fromJson(raw) }.getOrNull()
         } ?: emptyList()
+
+        val envelopesList = prefs[Keys.BUDGET_ENVELOPES_JSON]?.let { raw ->
+            runCatching { envelopesAdapter.fromJson(raw) }.getOrNull()
+        } ?: CatalogDefaults.defaultBudgetEnvelopes
 
         SandooqiSettings(
             darkMode = prefs[Keys.DARK_MODE] ?: false,
@@ -96,12 +108,18 @@ class SandooqiPreferences(private val context: Context) {
             activeFamilyMember = prefs[Keys.ACTIVE_FAMILY_MEMBER] ?: members.first(),
             familyMembers = members,
             quickExpenses = quickList,
-            customProducts = customList
+            customProducts = customList,
+            budgetEnvelopes = envelopesList,
+            themeStyle = prefs[Keys.THEME_STYLE] ?: "navy"
         )
     }
 
     suspend fun toggleDarkMode() {
         context.sandooqiDataStore.edit { it[Keys.DARK_MODE] = !(it[Keys.DARK_MODE] ?: false) }
+    }
+
+    suspend fun setThemeStyle(style: String) {
+        context.sandooqiDataStore.edit { it[Keys.THEME_STYLE] = style }
     }
 
     suspend fun togglePrivacyMode() {
@@ -177,6 +195,12 @@ class SandooqiPreferences(private val context: Context) {
         }
     }
 
+    suspend fun updateBudgetEnvelopes(items: List<BudgetEnvelopeItem>) {
+        context.sandooqiDataStore.edit {
+            it[Keys.BUDGET_ENVELOPES_JSON] = envelopesAdapter.toJson(items)
+        }
+    }
+
     suspend fun applySettings(settings: SandooqiSettings) {
         context.sandooqiDataStore.edit {
             it[Keys.DARK_MODE] = settings.darkMode
@@ -196,6 +220,8 @@ class SandooqiPreferences(private val context: Context) {
             it[Keys.FAMILY_MEMBERS] = settings.familyMembers.joinToString(",")
             it[Keys.QUICK_EXPENSES_JSON] = quickAdapter.toJson(settings.quickExpenses)
             it[Keys.CUSTOM_PRODUCTS_JSON] = productsAdapter.toJson(settings.customProducts)
+            it[Keys.BUDGET_ENVELOPES_JSON] = envelopesAdapter.toJson(settings.budgetEnvelopes)
+            it[Keys.THEME_STYLE] = settings.themeStyle
         }
     }
 }

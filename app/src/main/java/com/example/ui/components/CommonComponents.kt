@@ -263,7 +263,7 @@ fun PinLockOverlay(
                     modifier = Modifier
                         .size(64.dp)
                         .clip(RoundedCornerShape(20.dp))
-                        .background(EmeraldHeader)
+                        .background(MaterialTheme.colorScheme.primary)
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Lock,

@@ -24,6 +24,7 @@ import com.example.ui.components.SectionHeader
 import com.example.ui.theme.EmeraldMain
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
+import com.example.ui.theme.SandooqiPalettes
 import com.example.ui.viewmodel.SandooqiUiState
 import com.example.ui.viewmodel.SandooqiViewModel
 
@@ -239,6 +240,22 @@ fun LazyListScope.toolsSettingsTab(
                 title = "المظهر والأمان والنسخ الاحتياطي",
                 icon = Icons.Rounded.Storage
             )
+            Spacer(Modifier.height(8.dp))
+            Text("لون الواجهة والخلفية العلوية:", style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                SandooqiPalettes.all.forEach { palette ->
+                    FilterChip(
+                        selected = state.settings.themeStyle == palette.key,
+                        onClick = { viewModel.setThemeStyle(palette.key) },
+                        label = { Text(palette.label, maxLines = 1) },
+                        modifier = Modifier.testTag("theme_palette_${palette.key}")
+                    )
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(

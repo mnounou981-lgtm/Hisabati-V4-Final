@@ -61,6 +61,7 @@ data class SandooqiUiState(
         DateUtils.currentYM(), emptyList(), emptyMap(), SandooqiSettings()
     ),
     val creditorGroups: List<CreditorGroupSummary> = emptyList(),
+    val receivableGroups: List<CreditorGroupSummary> = emptyList(),
     val openHomeAndBillDebtsCents: Long = 0L,
     val unpaidObligationsCents: Long = 0L,
     val openRentReceivablesCents: Long = 0L,
@@ -75,5 +76,6 @@ data class SandooqiUiState(
     val toastMessage: String? = null,
     val showVoiceDialog: Boolean = false,
     val showSearchDialog: Boolean = false,
-    val showMonthCloseDialog: Boolean = false
+    val showMonthCloseDialog: Boolean = false,
+    val showQuickAddSheet: Boolean = false
 )

@@ -64,11 +64,320 @@ fun BudgetScreen(
     var fundingSeason by remember { mutableStateOf<SeasonalBudgetEntity?>(null) }
     var seasonFundAmt by remember { mutableStateOf("") }
 
+    var showEditBudgetDialog by remember { mutableStateOf(false) }
+    var budgetDialogText by remember(state.settings.monthlyFamilyBudgetCents) {
+        mutableStateOf(
+            if (state.settings.monthlyFamilyBudgetCents > 0L) MoneyFormat.formatNumberOnly(state.settings.monthlyFamilyBudgetCents) else ""
+        )
+    }
+    var newEnvName by remember { mutableStateOf("") }
+    var newEnvAmt by remember { mutableStateOf("") }
+
+    val autoIncomeTotalCents = state.currentReport.family.externalIncomeCents
+    val effectiveBudgetTotalCents = if (state.settings.monthlyFamilyBudgetCents > 0L) {
+        state.settings.monthlyFamilyBudgetCents
+    } else {
+        autoIncomeTotalCents
+    }
+    val allocatedSumCents = state.settings.budgetEnvelopes.sumOf { it.amountCents }
+    val remainingBudgetCents = effectiveBudgetTotalCents - allocatedSumCents
+    val allocatedFraction = if (effectiveBudgetTotalCents > 0L) {
+        (allocatedSumCents.toFloat() / effectiveBudgetTotalCents.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+    val allocatedPct = if (effectiveBudgetTotalCents > 0L) {
+        ((allocatedSumCents * 100.0) / effectiveBudgetTotalCents).toInt()
+    } else 0
+    val openDebtsAlertCount = state.creditorGroups.count { it.remainingCents > 0L }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Monthly Budget Organizer (matching V12 design)
+        item {
+            SandooqiCard {
+                SectionHeader(
+                    title = "تنظيم الميزانية الشهرية",
+                    subtitle = "وزّع ميزانيتك على الكراء والمصروف وأي بنود إضافية، ويتم الخصم من المتبقي تلقائياً.",
+                    icon = Icons.Rounded.Calculate
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        budgetDialogText = if (state.settings.monthlyFamilyBudgetCents > 0L) {
+                            MoneyFormat.formatNumberOnly(state.settings.monthlyFamilyBudgetCents)
+                        } else ""
+                        showEditBudgetDialog = true
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.heightIn(min = 44.dp).testTag("edit_monthly_budget_button")
+                ) {
+                    Text("تعديل مبلغ الميزانية")
+                }
+                Spacer(Modifier.height(12.dp))
+
+                // 3 Summary Boxes
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = if (state.settings.monthlyFamilyBudgetCents > 0L) "إجمالي الميزانية (محدد يدوياً)" else "إجمالي الميزانية (تلقائي من دخل الشهر)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = MoneyFormat.formatDzd(effectiveBudgetTotalCents, privacy),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "مجموع المخصص (يُنقص من الميزانية)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "- ${MoneyFormat.formatDzd(allocatedSumCents, privacy)}",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = GoldAccent
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (remainingBudgetCents >= 0L) IncomeGreen.copy(alpha = 0.12f) else ExpenseRed.copy(alpha = 0.12f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "المتبقي من الميزانية",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = MoneyFormat.formatDzd(remainingBudgetCents, privacy),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (remainingBudgetCents >= 0L) IncomeGreen else ExpenseRed
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "نسبة التوزيع من الميزانية",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "$allocatedPct%",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { allocatedFraction },
+                    color = if (remainingBudgetCents >= 0L) IncomeGreen else ExpenseRed,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(6.dp))
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                // Envelope cards
+                state.settings.budgetEnvelopes.forEach { env ->
+                    var envAmtText by remember(env.id, env.amountCents) {
+                        mutableStateOf(MoneyFormat.formatNumberOnly(env.amountCents))
+                    }
+                    val envPct = if (effectiveBudgetTotalCents > 0L) {
+                        ((env.amountCents * 100.0) / effectiveBudgetTotalCents).toInt()
+                    } else 0
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = env.name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface
+                                    ) {
+                                        Text(
+                                            text = "$envPct%",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { viewModel.deleteBudgetEnvelope(env.id) },
+                                    modifier = Modifier.testTag("delete_envelope_${env.id}")
+                                ) {
+                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف بند الميزانية")
+                                }
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = envAmtText,
+                                    onValueChange = {
+                                        envAmtText = it
+                                        val parsed = MoneyFormat.parseToCents(it)
+                                        if (parsed != null) {
+                                            viewModel.updateBudgetEnvelopeAmount(env.id, parsed)
+                                        }
+                                    },
+                                    suffix = { Text("دج") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    modifier = Modifier.weight(1f).testTag("envelope_amount_${env.id}")
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        val parsed = MoneyFormat.parseToCents(envAmtText) ?: env.amountCents
+                                        if (parsed != env.amountCents) {
+                                            viewModel.updateBudgetEnvelopeAmount(env.id, parsed)
+                                        }
+                                        viewModel.deductBudgetEnvelopeFromTreasury(env.copy(amountCents = parsed))
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("deduct_envelope_${env.id}")
+                                ) {
+                                    Icon(Icons.Rounded.CheckCircleOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("خصم من الخزينة", maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = newEnvName,
+                    onValueChange = { newEnvName = it },
+                    label = { Text("إضافة أي تسمية (فواتير، دراسة، نقل، صحة...)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("new_envelope_name_input")
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = newEnvAmt,
+                    onValueChange = { newEnvAmt = it },
+                    label = { Text("المبلغ (دج)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth().testTag("new_envelope_amount_input")
+                )
+                Spacer(Modifier.height(8.dp))
+                FilledTonalButton(
+                    onClick = {
+                        val c = MoneyFormat.parseToCents(newEnvAmt) ?: 0L
+                        if (newEnvName.isNotBlank()) {
+                            viewModel.addBudgetEnvelope(newEnvName, c)
+                            newEnvName = ""
+                            newEnvAmt = ""
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("add_envelope_button")
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("إضافة واحتساب من الميزانية")
+                }
+            }
+        }
+
+        // Financial Review Alerts Card
+        if (openDebtsAlertCount > 0 || state.openHomeAndBillDebtsCents > 0L) {
+            item {
+                SandooqiCard(
+                    containerColor = ExpenseRed.copy(alpha = 0.08f)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Rounded.WarningAmber,
+                                contentDescription = null,
+                                tint = ExpenseRed
+                            )
+                            Column {
+                                Text(
+                                    text = "تنبيهات مالية تستوجب المراجعة",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = ExpenseRed,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "ديون محلات مستحقة أو قريبة الاستحقاق ($openDebtsAlertCount)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        TextButton(
+                            onClick = { viewModel.selectTab(com.example.ui.viewmodel.MainNavTab.DEBTS) },
+                            modifier = Modifier.testTag("budget_review_debts_button")
+                        ) {
+                            Text("عرض")
+                        }
+                    }
+                }
+            }
+        }
+
         // Unified Budget Card
         item {
             SandooqiCard {
@@ -329,6 +638,43 @@ fun BudgetScreen(
                 }) { Text("تخصيص") }
             },
             dismissButton = { TextButton(onClick = { fundingSeason = null }) { Text("إلغاء") } }
+        )
+    }
+
+    if (showEditBudgetDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditBudgetDialog = false },
+            title = { Text("تعديل مبلغ الميزانية الشهرية") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "اتركه صفراً أو فارغاً للاحتساب التلقائي من دخل الشهر (${MoneyFormat.formatDzd(autoIncomeTotalCents, privacy)}).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = budgetDialogText,
+                        onValueChange = { budgetDialogText = it },
+                        label = { Text("إجمالي الميزانية (دج)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth().testTag("edit_budget_dialog_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val m = MoneyFormat.parseToCents(budgetDialogText) ?: 0L
+                        viewModel.saveBudgets(m, state.settings.weeklyFamilyBudgetCents)
+                        showEditBudgetDialog = false
+                    },
+                    modifier = Modifier.testTag("edit_budget_dialog_confirm")
+                ) { Text("حفظ") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditBudgetDialog = false }) { Text("إلغاء") }
+            }
         )
     }
 }

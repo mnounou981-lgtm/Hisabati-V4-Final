@@ -12,9 +12,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.ShoppingBasket
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +34,7 @@ import com.example.data.local.SavingsGoalEntity
 import com.example.domain.DateUtils
 import com.example.domain.MoneyFormat
 import com.example.domain.ParsedVoiceEntry
+import com.example.domain.QuickExpensePreset
 import com.example.domain.VoiceEntryMode
 import com.example.domain.VoiceParser
 import com.example.ui.theme.EmeraldMain
@@ -386,3 +393,331 @@ fun MonthCloseDialog(
         }
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun QuickAddBottomSheet(
+    quickExpenses: List<QuickExpensePreset>,
+    familyMembers: List<String>,
+    privacyMode: Boolean,
+    onDismiss: () -> Unit,
+    onQuickPreset: (QuickExpensePreset) -> Unit,
+    onAddExpense: (person: String?, item: String, amountCents: Long) -> Unit,
+    onAddDebt: (creditor: String, item: String, amountCents: Long) -> Unit,
+    onAddIncome: (accountId: String, name: String, amountCents: Long) -> Unit
+) {
+    var activeTab by remember { mutableIntStateOf(0) } // 0=مصروف, 1=دين محل, 2=دخل/خياطة
+    var expItem by remember { mutableStateOf("") }
+    var expAmount by remember { mutableStateOf("") }
+    var expPerson by remember(familyMembers) { mutableStateOf(familyMembers.firstOrNull() ?: "عام") }
+    var memberDropdownOpen by remember { mutableStateOf(false) }
+
+    var debtCreditor by remember { mutableStateOf("") }
+    var debtItem by remember { mutableStateOf("") }
+    var debtAmount by remember { mutableStateOf("") }
+
+    var incAccount by remember { mutableStateOf("family") }
+    var incName by remember { mutableStateOf("") }
+    var incAmount by remember { mutableStateOf("") }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Rounded.Add,
+                        contentDescription = null,
+                        tint = IncomeGreen
+                    )
+                    Text(
+                        text = "إضافة سريعة من أي مكان",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.testTag("quick_add_close_button")
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Rounded.Close,
+                        contentDescription = "إغلاق"
+                    )
+                }
+            }
+
+            // 3 Tabs: مصروف | دين محل | دخل/خياطة
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(
+                    selected = activeTab == 0,
+                    onClick = { activeTab = 0 },
+                    leadingIcon = {
+                        Icon(
+                            androidx.compose.material.icons.Icons.Rounded.ShoppingBasket,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    label = { Text("مصروف", maxLines = 1) },
+                    modifier = Modifier.weight(1f).testTag("quick_tab_expense")
+                )
+                FilterChip(
+                    selected = activeTab == 1,
+                    onClick = { activeTab = 1 },
+                    leadingIcon = {
+                        Icon(
+                            androidx.compose.material.icons.Icons.Rounded.ReceiptLong,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    label = { Text("دين محل", maxLines = 1) },
+                    modifier = Modifier.weight(1f).testTag("quick_tab_debt")
+                )
+                FilterChip(
+                    selected = activeTab == 2,
+                    onClick = { activeTab = 2 },
+                    leadingIcon = {
+                        Icon(
+                            androidx.compose.material.icons.Icons.Rounded.AccountBalanceWallet,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    label = { Text("دخل/خياطة", maxLines = 1) },
+                    modifier = Modifier.weight(1f).testTag("quick_tab_income")
+                )
+            }
+
+            when (activeTab) {
+                0 -> {
+                    // 2-column grid of quick expense buttons
+                    quickExpenses.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            pair.forEach { preset ->
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 68.dp)
+                                        .clickable {
+                                            onQuickPreset(preset)
+                                            onDismiss()
+                                        }
+                                        .testTag("quick_sheet_preset_${preset.id}")
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(preset.icon, style = MaterialTheme.typography.titleMedium)
+                                        Text(
+                                            text = preset.name,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = MoneyFormat.formatDzd(preset.amountCents, privacyMode),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = IncomeGreen,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = expItem,
+                        onValueChange = { expItem = it },
+                        label = { Text("الغرض (خبز، خضر، مواصلات...)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("quick_expense_item_input")
+                    )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(0.9f)) {
+                            OutlinedButton(
+                                onClick = { memberDropdownOpen = true },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 54.dp)
+                                    .testTag("quick_expense_member_button")
+                            ) {
+                                Text(expPerson, maxLines = 1)
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    androidx.compose.material.icons.Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = memberDropdownOpen,
+                                onDismissRequest = { memberDropdownOpen = false }
+                            ) {
+                                (listOf("عام (الخزينة)") + familyMembers).forEach { opt ->
+                                    DropdownMenuItem(
+                                        text = { Text(opt) },
+                                        onClick = {
+                                            expPerson = opt
+                                            memberDropdownOpen = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = expAmount,
+                            onValueChange = { expAmount = it },
+                            label = { Text("المبلغ (دج)") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1.1f).testTag("quick_expense_amount_input")
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            val cents = MoneyFormat.parseToCents(expAmount) ?: 0L
+                            if (expItem.isNotBlank() && cents > 0L) {
+                                val personArg = if (expPerson == "عام (الخزينة)") null else expPerson
+                                onAddExpense(personArg, expItem, cents)
+                                onDismiss()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = IncomeGreen),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("quick_expense_submit_button")
+                    ) {
+                        Text("خصم المصروف من الخزينة", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                1 -> {
+                    OutlinedTextField(
+                        value = debtCreditor,
+                        onValueChange = { debtCreditor = it },
+                        label = { Text("التاجر / المحل") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("quick_debt_creditor_input")
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = debtItem,
+                            onValueChange = { debtItem = it },
+                            label = { Text("الغرض") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1.1f)
+                        )
+                        OutlinedTextField(
+                            value = debtAmount,
+                            onValueChange = { debtAmount = it },
+                            label = { Text("المبلغ (دج)") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(0.9f).testTag("quick_debt_amount_input")
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            val cents = MoneyFormat.parseToCents(debtAmount) ?: 0L
+                            if (debtCreditor.isNotBlank() && cents > 0L) {
+                                onAddDebt(debtCreditor, debtItem, cents)
+                                onDismiss()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = ExpenseRed),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("quick_debt_submit_button")
+                    ) {
+                        Text("تسجيل دين محل (عليه)", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                else -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(
+                            "family" to "العائلي",
+                            "personal" to "الشخصي",
+                            "sewing" to "الخياطة"
+                        ).forEach { (id, label) ->
+                            FilterChip(
+                                selected = incAccount == id,
+                                onClick = { incAccount = id },
+                                label = { Text(label, maxLines = 1) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = incName,
+                        onValueChange = { incName = it },
+                        label = { Text("البيان / مصدر الدخل") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("quick_income_name_input")
+                    )
+                    OutlinedTextField(
+                        value = incAmount,
+                        onValueChange = { incAmount = it },
+                        label = { Text("المبلغ (دج)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth().testTag("quick_income_amount_input")
+                    )
+                    Button(
+                        onClick = {
+                            val cents = MoneyFormat.parseToCents(incAmount) ?: 0L
+                            if (incName.isNotBlank() && cents > 0L) {
+                                onAddIncome(incAccount, incName, cents)
+                                onDismiss()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = IncomeGreen),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("quick_income_submit_button")
+                    ) {
+                        Text("تسجيل الدخل", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+

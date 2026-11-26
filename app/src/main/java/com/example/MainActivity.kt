@@ -8,6 +8,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -16,14 +22,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.domain.DateUtils
 import com.example.ui.components.GlobalSearchDialog
 import com.example.ui.components.MonthCloseDialog
 import com.example.ui.components.PinLockOverlay
+import com.example.ui.components.QuickAddBottomSheet
 import com.example.ui.components.SandooqiBottomNav
 import com.example.ui.components.SandooqiTopHeader
 import com.example.ui.components.VoiceEntryDialog
+import com.example.ui.theme.IncomeGreen
 import com.example.ui.screens.BudgetScreen
 import com.example.ui.screens.DebtsScreen
 import com.example.ui.screens.ExpensesScreen
@@ -59,7 +71,10 @@ fun SandooqiApp(viewModel: SandooqiViewModel = viewModel()) {
         }
     }
 
-    SandooqiTheme(darkTheme = state.settings.darkMode) {
+    SandooqiTheme(
+        darkTheme = state.settings.darkMode,
+        themeStyle = state.settings.themeStyle
+    ) {
         if (state.isAppLocked) {
             PinLockOverlay(onUnlock = { viewModel.unlockApp(it) })
             return@SandooqiTheme
@@ -77,6 +92,7 @@ fun SandooqiApp(viewModel: SandooqiViewModel = viewModel()) {
                     currentYM = state.currentYM,
                     darkMode = state.settings.darkMode,
                     privacyMode = state.settings.privacyMode,
+                    themeStyle = state.settings.themeStyle,
                     onToggleDarkMode = { viewModel.toggleDarkMode() },
                     onTogglePrivacy = { viewModel.togglePrivacyMode() },
                     onOpenVoice = { viewModel.setVoiceDialog(true) },
@@ -89,6 +105,19 @@ fun SandooqiApp(viewModel: SandooqiViewModel = viewModel()) {
                     onSelectTab = { viewModel.selectTab(it) },
                     familyEntryOnlyMode = state.settings.familyEntryOnlyMode
                 )
+            },
+            floatingActionButton = {
+                if (!state.settings.familyEntryOnlyMode) {
+                    FloatingActionButton(
+                        onClick = { viewModel.setQuickAddSheet(true) },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.testTag("quick_add_fab")
+                    ) {
+                        Icon(Icons.Rounded.Add, contentDescription = "إضافة سريعة")
+                    }
+                }
             }
         ) { innerPadding ->
             Box(
@@ -133,6 +162,44 @@ fun SandooqiApp(viewModel: SandooqiViewModel = viewModel()) {
                     privacyMode = state.settings.privacyMode,
                     onDismiss = { viewModel.setMonthCloseDialog(false) },
                     onConfirmClose = { goalId, pct -> viewModel.closeMonth(goalId, pct) }
+                )
+            }
+
+            if (state.showQuickAddSheet) {
+                QuickAddBottomSheet(
+                    quickExpenses = state.settings.quickExpenses,
+                    familyMembers = state.settings.familyMembers,
+                    privacyMode = state.settings.privacyMode,
+                    onDismiss = { viewModel.setQuickAddSheet(false) },
+                    onQuickPreset = { viewModel.runQuickExpense(it) },
+                    onAddExpense = { person, item, amtCents ->
+                        if (person != null) {
+                            viewModel.addFamilyExpense(person, item, amtCents)
+                        } else {
+                            viewModel.addGroceryExpense(
+                                name = item,
+                                qty = 1.0,
+                                unit = "حبة",
+                                unitPriceCents = amtCents,
+                                category = "مشتريات",
+                                dateISO = DateUtils.todayISO(),
+                                isCredit = false,
+                                shopOrCreditor = ""
+                            )
+                        }
+                    },
+                    onAddDebt = { creditor, item, amtCents ->
+                        viewModel.addManualHomeDebt(
+                            creditor = creditor,
+                            item = item,
+                            amountCents = amtCents,
+                            dueISO = "",
+                            activity = "مشتريات"
+                        )
+                    },
+                    onAddIncome = { accountId, name, amtCents ->
+                        viewModel.quickAddIncome(accountId, name, amtCents)
+                    }
                 )
             }
         }

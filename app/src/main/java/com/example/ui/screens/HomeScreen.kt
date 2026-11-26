@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -64,10 +65,13 @@ fun HomeScreen(
         item {
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = if (state.settings.darkMode) DarkEmeraldHeader else EmeraldHeader,
-                shadowElevation = 6.dp,
+                color = Color.Transparent,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                shadowElevation = 0.dp,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(SandooqiPalettes.heroBrush(state.settings.themeStyle, state.settings.darkMode))
                     .testTag("home_hero_card")
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {

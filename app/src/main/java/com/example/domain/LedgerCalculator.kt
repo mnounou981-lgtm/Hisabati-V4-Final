@@ -233,7 +233,19 @@ object LedgerCalculator {
     }
 
     fun groupCreditorDebts(debts: List<CreditorDebtEntity>, todayISO: String): List<CreditorGroupSummary> {
-        return debts.filter { it.kind in listOf("home_debt", "bill_debt", "rent_out") }
+        return groupDebtsByKind(debts, setOf("home_debt", "bill_debt", "rent_out"), todayISO)
+    }
+
+    fun groupReceivableDebts(debts: List<CreditorDebtEntity>, todayISO: String): List<CreditorGroupSummary> {
+        return groupDebtsByKind(debts, setOf("home_debt_in"), todayISO)
+    }
+
+    private fun groupDebtsByKind(
+        debts: List<CreditorDebtEntity>,
+        kinds: Set<String>,
+        todayISO: String
+    ): List<CreditorGroupSummary> {
+        return debts.filter { it.kind in kinds }
             .groupBy { it.creditor.trim().ifEmpty { "تاجر / محل" } }
             .map { (creditor, list) ->
                 val total = list.sumOf { it.amountCents }

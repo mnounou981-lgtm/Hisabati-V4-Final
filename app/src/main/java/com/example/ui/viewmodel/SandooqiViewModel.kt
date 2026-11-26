@@ -40,6 +40,7 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
     private val _showVoice = MutableStateFlow(false)
     private val _showSearch = MutableStateFlow(false)
     private val _showMonthClose = MutableStateFlow(false)
+    private val _showQuickAddSheet = MutableStateFlow(false)
 
     private val coreBundleFlow = combine(
         prefs.settingsFlow,
@@ -78,14 +79,21 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
         ExtrasPart(market, prices, warranties, months.associateBy { it.ym }, sewWork.first, sewWork.second)
     }
 
+    private val dialogFlagsFlow = combine(
+        _showVoice,
+        _showSearch,
+        _showMonthClose,
+        _showQuickAddSheet
+    ) { v, s, m, q -> DialogFlags(v, s, m, q) }
+
     private val uiControlsFlow = combine(
         _selectedTab,
         _reportYM,
         _isUnlocked,
         _toast,
-        combine(_showVoice, _showSearch, _showMonthClose) { v, s, m -> Triple(v, s, m) }
+        dialogFlagsFlow
     ) { tab, repYm, unlocked, toast, dialogs ->
-        UiControlsPart(tab, repYm, unlocked, toast, dialogs.first, dialogs.second, dialogs.third)
+        UiControlsPart(tab, repYm, unlocked, toast, dialogs.voice, dialogs.search, dialogs.monthClose, dialogs.quickAdd)
     }
 
     val uiState: StateFlow<SandooqiUiState> = combine(
@@ -99,14 +107,15 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
         val curRep = LedgerCalculator.computeMonthlyReport(curYm, core.txs, extras.months, core.settings)
         val selRep = LedgerCalculator.computeMonthlyReport(ui.reportYm, core.txs, extras.months, core.settings)
         val groups = LedgerCalculator.groupCreditorDebts(core.debts, today)
+        val recGroups = LedgerCalculator.groupReceivableDebts(core.debts, today)
         val openDebtsCents = groups.sumOf { it.remainingCents }
         val unpaidOblCents = core.obls.sumOf {
             LedgerCalculator.obligationUnpaidMonths(it, curYm).size * max(0L, it.amountCents)
         }
-        val rentReceivables = core.debts
-            .filter { it.kind == "rent_in" && !it.settled }
+        val rentAndPersonReceivables = core.debts
+            .filter { (it.kind == "rent_in" || it.kind == "home_debt_in") && !it.settled }
             .sumOf { max(0L, it.amountCents - it.paidCents) }
-        val expectedNet = curRep.family.balanceCents - openDebtsCents - unpaidOblCents + rentReceivables
+        val expectedNet = curRep.family.balanceCents - openDebtsCents - unpaidOblCents + rentAndPersonReceivables
         val totalSav = sew.goals.sumOf { max(0L, it.savedCents) }
         val workshop = LedgerCalculator.computeWorkshopSummary(sew.orders)
         val spikes = computeBillSpikes(core.txs)
@@ -139,9 +148,10 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
             currentReport = curRep,
             selectedReport = selRep,
             creditorGroups = groups,
+            receivableGroups = recGroups,
             openHomeAndBillDebtsCents = openDebtsCents,
             unpaidObligationsCents = unpaidOblCents,
-            openRentReceivablesCents = rentReceivables,
+            openRentReceivablesCents = rentAndPersonReceivables,
             expectedFamilyNetCents = expectedNet,
             totalSavingsCents = totalSav,
             workshopSummary = workshop,
@@ -151,7 +161,8 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
             toastMessage = ui.toast,
             showVoiceDialog = ui.showVoice,
             showSearchDialog = ui.showSearch,
-            showMonthCloseDialog = ui.showMonthClose
+            showMonthCloseDialog = ui.showMonthClose,
+            showQuickAddSheet = ui.showQuickAdd
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SandooqiUiState())
 
@@ -184,8 +195,13 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
     fun setVoiceDialog(show: Boolean) { _showVoice.value = show }
     fun setSearchDialog(show: Boolean) { _showSearch.value = show }
     fun setMonthCloseDialog(show: Boolean) { _showMonthClose.value = show }
+    fun setQuickAddSheet(show: Boolean) { _showQuickAddSheet.value = show }
 
     fun toggleDarkMode() = viewModelScope.launch { prefs.toggleDarkMode() }
+    fun setThemeStyle(style: String) = viewModelScope.launch {
+        prefs.setThemeStyle(style)
+        showToast("تم تحديث ثيم التطبيق")
+    }
     fun togglePrivacyMode() = viewModelScope.launch { prefs.togglePrivacyMode() }
     fun toggleSound() = viewModelScope.launch { prefs.toggleSound() }
 
@@ -340,6 +356,12 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
             txDao.deleteByTransferId(tx.transferId)
         } else {
             txDao.deleteById(tx.id)
+            if (tx.isCreditPurchase && tx.homeDebtId != null) {
+                val linkedDebt = uiState.value.debts.find { it.id == tx.homeDebtId }
+                if (linkedDebt != null && linkedDebt.paidCents == 0L) {
+                    debtDao.deleteById(linkedDebt.id)
+                }
+            }
         }
         showToast("تم حذف العملية")
     }
@@ -443,28 +465,42 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
     fun setMarketBudget(cents: Long) = viewModelScope.launch { prefs.setMarketBudget(cents) }
 
     // --- Debts, Bills, Obligations, Rent & Family ---
-    fun addManualHomeDebt(creditor: String, item: String, amountCents: Long, dueISO: String, activity: String, photoUri: String = "") = viewModelScope.launch {
+    fun addManualHomeDebt(
+        creditor: String,
+        item: String,
+        amountCents: Long,
+        dueISO: String,
+        activity: String,
+        photoUri: String = "",
+        isReceivable: Boolean = false
+    ) = viewModelScope.launch {
         if (creditor.isBlank() || amountCents <= 0L) return@launch
+        val kind = if (isReceivable) "home_debt_in" else "home_debt"
         debtDao.insert(
             CreditorDebtEntity(
                 creditor = creditor.trim(),
-                item = item.ifBlank { "دين $activity" },
+                item = item.ifBlank { if (isReceivable) "مستحق عند ${creditor.trim()}" else "دين $activity" },
                 activity = activity,
                 amountCents = amountCents,
                 dueDateISO = dueISO,
                 dateISO = DateUtils.todayISO(),
                 ym = DateUtils.currentYM(),
                 photoUri = photoUri,
-                kind = "home_debt"
+                kind = kind
             )
         )
-        showToast("تم تسجيل دين عند ${creditor.trim()}")
+        showToast(if (isReceivable) "تم تسجيل مستحق لك عند ${creditor.trim()}" else "تم تسجيل دين عند ${creditor.trim()}")
     }
 
-    fun payCreditorAmount(creditor: String, paymentCents: Long) = viewModelScope.launch {
+    fun payCreditorAmount(creditor: String, paymentCents: Long, isReceivable: Boolean = false) = viewModelScope.launch {
         if (paymentCents <= 0L) return@launch
+        val targetKinds = if (isReceivable) listOf("home_debt_in") else listOf("home_debt", "bill_debt", "rent_out")
         val open = uiState.value.debts
-            .filter { it.creditor.trim() == creditor.trim() && it.kind in listOf("home_debt", "bill_debt", "rent_out") && it.amountCents > it.paidCents }
+            .filter {
+                it.creditor.trim().ifEmpty { "تاجر / محل" } == creditor.trim() &&
+                    it.kind in targetKinds &&
+                    it.amountCents > it.paidCents
+            }
             .sortedWith(compareBy<CreditorDebtEntity> { it.ym }.thenBy { it.id })
         var left = paymentCents
         for (debt in open) {
@@ -482,15 +518,38 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
                     ym = DateUtils.currentYM(),
                     dateISO = DateUtils.todayISO(),
                     accountId = "family",
-                    type = "out",
-                    category = "debt_payment",
-                    name = "تسديد دين للمحل: $creditor",
+                    type = if (isReceivable) "in" else "out",
+                    category = if (isReceivable) "extra" else "debt_payment",
+                    name = if (isReceivable) "تحصيل مستحق من: $creditor" else "تسديد دين للمحل: $creditor",
                     amountCents = applied,
                     creditor = creditor
                 )
             )
-            showToast("تم تسديد ${MoneyFormat.formatDzd(applied)} لـ $creditor")
+            showToast(
+                if (isReceivable) "تم تحصيل ${MoneyFormat.formatDzd(applied)} من $creditor"
+                else "تم تسديد ${MoneyFormat.formatDzd(applied)} لـ $creditor"
+            )
         }
+    }
+
+    fun paySingleDebt(debt: CreditorDebtEntity) = viewModelScope.launch {
+        val rem = max(0L, debt.amountCents - debt.paidCents)
+        if (rem <= 0L) return@launch
+        val isReceivable = debt.kind == "home_debt_in" || debt.kind == "rent_in"
+        debtDao.update(debt.copy(paidCents = debt.amountCents, settled = true))
+        txDao.insert(
+            TransactionEntity(
+                ym = DateUtils.currentYM(),
+                dateISO = DateUtils.todayISO(),
+                accountId = "family",
+                type = if (isReceivable) "in" else "out",
+                category = if (isReceivable) "extra" else "debt_payment",
+                name = if (isReceivable) "تحصيل بند (${debt.item}) من: ${debt.creditor}" else "تسديد بند (${debt.item}) لـ: ${debt.creditor}",
+                amountCents = rem,
+                creditor = debt.creditor
+            )
+        )
+        showToast(if (isReceivable) "تم تحصيل ${MoneyFormat.formatDzd(rem)}" else "تم تسديد ${MoneyFormat.formatDzd(rem)}")
     }
 
     fun deleteDebt(id: Long) = viewModelScope.launch { debtDao.deleteById(id) }
@@ -542,16 +601,25 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
     fun collectRentReceivable(debt: CreditorDebtEntity) = viewModelScope.launch {
         val rem = max(0L, debt.amountCents - debt.paidCents)
         if (rem <= 0L) return@launch
+        val isReceivable = debt.kind == "rent_in"
         txDao.insert(
             TransactionEntity(
                 ym = DateUtils.currentYM(), dateISO = DateUtils.todayISO(), accountId = "family",
-                type = "in", category = "extra",
-                name = "تحصيل كراء له (${debt.rentUnit.ifBlank { debt.item }}) من: ${debt.creditor}",
+                type = if (isReceivable) "in" else "out",
+                category = if (isReceivable) "extra" else "debt_payment",
+                name = if (isReceivable) {
+                    "تحصيل كراء له (${debt.rentUnit.ifBlank { debt.item }}) من: ${debt.creditor}"
+                } else {
+                    "تسديد كراء (${debt.rentUnit.ifBlank { debt.item }}) إلى: ${debt.creditor}"
+                },
                 amountCents = rem, creditor = debt.creditor
             )
         )
         debtDao.update(debt.copy(paidCents = debt.amountCents, settled = true))
-        showToast("تم تحصيل ${MoneyFormat.formatDzd(rem)} وإضافتها للخزينة")
+        showToast(
+            if (isReceivable) "تم تحصيل ${MoneyFormat.formatDzd(rem)} وإضافتها للخزينة"
+            else "تم تسديد ${MoneyFormat.formatDzd(rem)} من الخزينة"
+        )
     }
 
     fun addBillOrObligation(name: String, amountCents: Long, creditor: String, dateISO: String, isPaid: Boolean, isRecurring: Boolean, unpaidMonths: Int, photoUri: String = "") = viewModelScope.launch {
@@ -708,6 +776,69 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
         prefs.setMonthlyFamilyBudget(monthlyCents)
         prefs.setWeeklyFamilyBudget(weeklyCents)
         showToast("تم حفظ سقف الميزانية الموحد")
+    }
+
+    fun addBudgetEnvelope(name: String, amountCents: Long) = viewModelScope.launch {
+        if (name.isBlank()) return@launch
+        val current = uiState.value.settings.budgetEnvelopes
+        val nextId = (current.maxOfOrNull { it.id } ?: 0L) + 1L
+        prefs.updateBudgetEnvelopes(
+            current + BudgetEnvelopeItem(id = nextId, name = name.trim(), amountCents = max(0L, amountCents))
+        )
+        showToast("تمت إضافة بند ${name.trim()} للميزانية")
+    }
+
+    fun updateBudgetEnvelopeAmount(id: Long, amountCents: Long) = viewModelScope.launch {
+        val updated = uiState.value.settings.budgetEnvelopes.map {
+            if (it.id == id) it.copy(amountCents = max(0L, amountCents)) else it
+        }
+        prefs.updateBudgetEnvelopes(updated)
+        showToast("تم تحديث مبلغ البند")
+    }
+
+    fun deleteBudgetEnvelope(id: Long) = viewModelScope.launch {
+        val updated = uiState.value.settings.budgetEnvelopes.filterNot { it.id == id }
+        prefs.updateBudgetEnvelopes(updated)
+    }
+
+    fun deductBudgetEnvelopeFromTreasury(envelope: BudgetEnvelopeItem) = viewModelScope.launch {
+        if (envelope.amountCents <= 0L) {
+            showToast("أدخل مبلغاً أكبر من الصفر للخصم")
+            return@launch
+        }
+        txDao.insert(
+            TransactionEntity(
+                ym = DateUtils.currentYM(),
+                dateISO = DateUtils.todayISO(),
+                accountId = "family",
+                type = "out",
+                category = "shop",
+                name = "مخصص ميزانية: ${envelope.name}",
+                amountCents = envelope.amountCents,
+                expenseCategory = envelope.name
+            )
+        )
+        showToast("تم خصم ${MoneyFormat.formatDzd(envelope.amountCents)} (${envelope.name}) من الخزينة")
+    }
+
+    fun quickAddIncome(accountId: String, name: String, amountCents: Long) = viewModelScope.launch {
+        if (name.isBlank() || amountCents <= 0L) {
+            showToast("أدخل البيان والمبلغ")
+            return@launch
+        }
+        val cat = if (accountId == "sewing") "sew_in" else "extra"
+        txDao.insert(
+            TransactionEntity(
+                ym = DateUtils.currentYM(),
+                dateISO = DateUtils.todayISO(),
+                accountId = accountId,
+                type = "in",
+                category = cat,
+                name = name.trim(),
+                amountCents = amountCents
+            )
+        )
+        showToast("تم تسجيل دخل ${MoneyFormat.formatDzd(amountCents)} في ${accountTitle(accountId)}")
     }
 
     fun addSavingsGoal(name: String, targetCents: Long) = viewModelScope.launch {
@@ -1425,6 +1556,13 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
         val projects: List<SewProjectEntity>
     )
 
+    private data class DialogFlags(
+        val voice: Boolean,
+        val search: Boolean,
+        val monthClose: Boolean,
+        val quickAdd: Boolean
+    )
+
     private data class UiControlsPart(
         val tab: MainNavTab,
         val reportYm: String,
@@ -1432,6 +1570,7 @@ class SandooqiViewModel(application: Application) : AndroidViewModel(application
         val toast: String?,
         val showVoice: Boolean,
         val showSearch: Boolean,
-        val showMonthClose: Boolean
+        val showMonthClose: Boolean,
+        val showQuickAdd: Boolean
     )
 }

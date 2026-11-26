@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -14,10 +19,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.data.local.FacPlanEntity
 import com.example.domain.CatalogDefaults
 import com.example.domain.CreditorGroupSummary
@@ -40,21 +49,48 @@ fun DebtsScreen(
     state: SandooqiUiState,
     viewModel: SandooqiViewModel
 ) {
+    val context = LocalContext.current
     val privacy = state.settings.privacyMode
+    val today = remember { DateUtils.todayISO() }
     var subTab by remember { mutableIntStateOf(0) } // 0=Shops/Rent, 1=Bills/Obligations, 2=Fac/Deductions, 3=Family
-    var payingCreditor by remember { mutableStateOf<CreditorGroupSummary?>(null) }
+    var payingCreditor by remember { mutableStateOf<Pair<CreditorGroupSummary, Boolean>?>(null) }
     var payAmountText by remember { mutableStateOf("") }
+    var previewPhotoUri by remember { mutableStateOf<String?>(null) }
 
-    // Manual Debt inputs
+    // Manual Debt inputs (عليه / له)
+    var debtIsReceivable by remember { mutableStateOf(false) }
     var debtCreditor by remember { mutableStateOf("") }
     var debtItem by remember { mutableStateOf("") }
     var debtAmount by remember { mutableStateOf("") }
     var debtDue by remember { mutableStateOf("") }
+    var debtActivity by remember { mutableStateOf(CatalogDefaults.expenseCategories.first()) }
+    var debtPhotoUri by remember { mutableStateOf("") }
+
+    var debtSearch by remember { mutableStateOf("") }
+    var debtDirFilter by remember { mutableStateOf("all") } // "all", "out", "in"
+
+    val debtPhotoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {
+            }
+            debtPhotoUri = uri.toString()
+        }
+    }
 
     // Rent inputs
+    var rentExpanded by remember { mutableStateOf(false) }
+    var rentFilter by remember { mutableStateOf("all") } // "all", "in", "out"
     var rentUnit by remember { mutableStateOf(CatalogDefaults.rentUnits.first()) }
     var rentParty by remember { mutableStateOf("") }
     var rentAmount by remember { mutableStateOf("") }
+    var rentDue by remember { mutableStateOf("") }
     var rentIsReceivable by remember { mutableStateOf(true) }
     var rentImmediate by remember { mutableStateOf(false) }
 
@@ -83,8 +119,15 @@ fun DebtsScreen(
     var famItem by remember { mutableStateOf("") }
     var famAmt by remember { mutableStateOf("") }
 
-    val rentReceivables = remember(state.debts) {
-        state.debts.filter { it.kind == "rent_in" && !it.settled }
+    val allRentRecords = remember(state.debts) {
+        state.debts.filter { it.kind == "rent_in" || it.kind == "rent_out" }
+    }
+    val openRentPayablesCents = remember(allRentRecords) {
+        allRentRecords.filter { it.kind == "rent_out" && !it.settled }
+            .sumOf { (it.amountCents - it.paidCents).coerceAtLeast(0L) }
+    }
+    val recentCreditors = remember(state.debts) {
+        state.debts.map { it.creditor.trim() }.filter { it.isNotEmpty() }.distinct().take(6)
     }
 
     LazyColumn(
@@ -112,22 +155,280 @@ fun DebtsScreen(
 
         when (subTab) {
             0 -> {
-                // Creditor groups
+                // Top 3 Summary Tiles
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatTile(
+                            label = "ديون مفتوحة (عليه)",
+                            value = MoneyFormat.formatDzd(state.openHomeAndBillDebtsCents, privacy),
+                            accentColor = ExpenseRed,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatTile(
+                            label = "مستحقات وكراء (له)",
+                            value = MoneyFormat.formatDzd(state.openRentReceivablesCents, privacy),
+                            accentColor = IncomeGreen,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatTile(
+                            label = "كراء للدفع (عليه)",
+                            value = MoneyFormat.formatDzd(openRentPayablesCents, privacy),
+                            accentColor = GoldAccent,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // Collapsible Rent section (له وعليه)
+                item {
+                    SandooqiCard {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { rentExpanded = !rentExpanded }
+                                .testTag("toggle_rent_section"),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Rounded.HomeWork, contentDescription = null, tint = EmeraldMain)
+                                Column {
+                                    Text(
+                                        text = "قسم الكراء (سكن / محل) — له وعليه (${allRentRecords.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = if (rentExpanded) "اضغط للطي" else "اضغط لتسجيل أو متابعة الكراء",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = if (rentExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                contentDescription = if (rentExpanded) "طي" else "توسيع"
+                            )
+                        }
+
+                        if (rentExpanded) {
+                            Spacer(Modifier.height(10.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                FilterChip(
+                                    selected = rentIsReceivable,
+                                    onClick = { rentIsReceivable = true },
+                                    label = { Text("كراء له (إيجار لي)", maxLines = 1) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FilterChip(
+                                    selected = !rentIsReceivable,
+                                    onClick = { rentIsReceivable = false },
+                                    label = { Text("كراء عليه (التزام)", maxLines = 1) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                CatalogDefaults.rentUnits.forEach { unit ->
+                                    FilterChip(
+                                        selected = rentUnit == unit,
+                                        onClick = { rentUnit = unit },
+                                        label = { Text(unit) }
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = rentParty,
+                                    onValueChange = { rentParty = it },
+                                    label = { Text("المستأجر / المؤجر") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = rentAmount,
+                                    onValueChange = { rentAmount = it },
+                                    label = { Text("المبلغ (دج)") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = rentDue,
+                                onValueChange = { rentDue = it },
+                                label = { Text("تاريخ الاستحقاق (اختياري YYYY-MM-DD)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { rentImmediate = !rentImmediate }
+                            ) {
+                                Checkbox(checked = rentImmediate, onCheckedChange = { rentImmediate = it })
+                                Text("تحصيل / دفع فوري في الخزينة العائلية", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Button(
+                                onClick = {
+                                    val c = MoneyFormat.parseToCents(rentAmount) ?: 0L
+                                    viewModel.addRentRecord(rentUnit, rentParty, c, rentIsReceivable, rentImmediate, rentDue)
+                                    if (rentParty.isNotBlank() && c > 0L) {
+                                        rentParty = ""; rentAmount = ""; rentDue = ""
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("save_rent_button")
+                            ) { Text("حفظ حركة الكراء") }
+
+                            if (allRentRecords.isNotEmpty()) {
+                                Spacer(Modifier.height(10.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                                Spacer(Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    listOf("all" to "الكل", "in" to "له", "out" to "عليه").forEach { (k, lbl) ->
+                                        FilterChip(
+                                            selected = rentFilter == k,
+                                            onClick = { rentFilter = k },
+                                            label = { Text(lbl, maxLines = 1) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                val visibleRents = when (rentFilter) {
+                                    "in" -> allRentRecords.filter { it.kind == "rent_in" }
+                                    "out" -> allRentRecords.filter { it.kind == "rent_out" }
+                                    else -> allRentRecords
+                                }
+                                visibleRents.forEach { r ->
+                                    val isRec = r.kind == "rent_in"
+                                    val remRent = (r.amountCents - r.paidCents).coerceAtLeast(0L)
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "${if (isRec) "كراء له" else "كراء عليه"}: ${r.creditor} (${r.rentUnit.ifBlank { r.item }})",
+                                                    style = MaterialTheme.typography.titleSmall
+                                                )
+                                                Text(
+                                                    text = if (r.settled) {
+                                                        if (isRec) "مُحصّل • ${MoneyFormat.formatDzd(r.amountCents, privacy)}"
+                                                        else "مسدد • ${MoneyFormat.formatDzd(r.amountCents, privacy)}"
+                                                    } else {
+                                                        "قيد الانتظار • ${MoneyFormat.formatDzd(remRent, privacy)}"
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = if (r.settled) MaterialTheme.colorScheme.onSurfaceVariant else if (isRec) IncomeGreen else ExpenseRed,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (!r.settled) {
+                                                    OutlinedButton(
+                                                        onClick = { viewModel.collectRentReceivable(r) },
+                                                        modifier = Modifier.testTag("settle_rent_${r.id}")
+                                                    ) {
+                                                        Text(if (isRec) "تحصيل" else "تسديد")
+                                                    }
+                                                }
+                                                IconButton(onClick = { viewModel.deleteDebt(r.id) }) {
+                                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف حركة الكراء")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Enhanced Debt Entry Card (له / عليه + Photo + Recent Creditors + Activity)
                 item {
                     SandooqiCard {
                         SectionHeader(
-                            title = "دفتر ديون المحلات (عليه)",
-                            subtitle = "إجمالي الديون المفتوحة: ${MoneyFormat.formatDzd(state.openHomeAndBillDebtsCents, privacy)}",
+                            title = "تسجيل دين (له / عليه) — المحلات والأشخاص",
+                            subtitle = "سجّل ما عليك للمحلات أو ما لك عند الأشخاص مع صورة الورقة",
                             icon = Icons.Rounded.Storefront
                         )
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = !debtIsReceivable,
+                                onClick = { debtIsReceivable = false },
+                                label = { Text("عليه (دين لي دفعه)", maxLines = 1) },
+                                modifier = Modifier.weight(1f).testTag("debt_dir_out_chip")
+                            )
+                            FilterChip(
+                                selected = debtIsReceivable,
+                                onClick = { debtIsReceivable = true },
+                                label = { Text("له (مستحق لي)", maxLines = 1) },
+                                modifier = Modifier.weight(1f).testTag("debt_dir_in_chip")
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedTextField(
+                            value = debtCreditor,
+                            onValueChange = { debtCreditor = it },
+                            label = { Text(if (debtIsReceivable) "اسم الشخص / الجهة المدينة لك" else "التاجر / المحل / الدائن") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("debt_creditor_input")
+                        )
+                        if (recentCreditors.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                recentCreditors.forEach { rc ->
+                                    AssistChip(
+                                        onClick = { debtCreditor = rc },
+                                        label = { Text(rc) }
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CatalogDefaults.expenseCategories.forEach { cat ->
+                                FilterChip(
+                                    selected = debtActivity == cat,
+                                    onClick = { debtActivity = cat },
+                                    label = { Text(cat) }
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
-                                value = debtCreditor,
-                                onValueChange = { debtCreditor = it },
-                                label = { Text("التاجر / المحل") },
+                                value = debtItem,
+                                onValueChange = { debtItem = it },
+                                label = { Text("الغرض / البيان") },
                                 singleLine = true,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1.1f).testTag("debt_item_input")
                             )
                             OutlinedTextField(
                                 value = debtAmount,
@@ -135,51 +436,146 @@ fun DebtsScreen(
                                 label = { Text("المبلغ (دج)") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(0.9f).testTag("debt_amount_input")
                             )
                         }
                         Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = debtItem,
-                                onValueChange = { debtItem = it },
-                                label = { Text("الغرض") },
-                                singleLine = true,
-                                modifier = Modifier.weight(1.2f)
-                            )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    debtPhotoPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.heightIn(min = 52.dp).testTag("debt_photo_picker_button")
+                            ) {
+                                Icon(Icons.Rounded.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("صورة ورقة الكريدي", maxLines = 1)
+                            }
                             OutlinedTextField(
                                 value = debtDue,
                                 onValueChange = { debtDue = it },
-                                label = { Text("الاستحقاق (YYYY-MM-DD)") },
+                                label = { Text("تاريخ الاستحقاق (اختياري)") },
+                                placeholder = { Text("YYYY-MM-DD") },
                                 singleLine = true,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f).testTag("debt_due_input")
                             )
                         }
-                        Spacer(Modifier.height(8.dp))
+                        if (debtPhotoUri.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                AsyncImage(
+                                    model = debtPhotoUri,
+                                    contentDescription = "صورة ورقة الكريدي",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                )
+                                TextButton(onClick = { debtPhotoUri = "" }) {
+                                    Text("إزالة الصورة")
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
                         Button(
                             onClick = {
                                 val cents = MoneyFormat.parseToCents(debtAmount) ?: 0L
-                                viewModel.addManualHomeDebt(debtCreditor, debtItem, cents, debtDue, "أخرى")
+                                viewModel.addManualHomeDebt(
+                                    creditor = debtCreditor,
+                                    item = debtItem,
+                                    amountCents = cents,
+                                    dueISO = debtDue,
+                                    activity = debtActivity,
+                                    photoUri = debtPhotoUri,
+                                    isReceivable = debtIsReceivable
+                                )
                                 if (debtCreditor.isNotBlank() && cents > 0L) {
-                                    debtCreditor = ""; debtItem = ""; debtAmount = ""; debtDue = ""
+                                    debtCreditor = ""; debtItem = ""; debtAmount = ""; debtDue = ""; debtPhotoUri = ""
                                 }
                             },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (debtIsReceivable) IncomeGreen else ExpenseRed
+                            ),
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("add_manual_debt_button")
-                        ) { Text("تسجيل دين جديد") }
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = if (debtIsReceivable) "إضافة مستحق (له)" else "إضافة دين (عليه)",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
-                if (state.creditorGroups.isEmpty()) {
+                // Search & Filter Card
+                item {
+                    SandooqiCard {
+                        OutlinedTextField(
+                            value = debtSearch,
+                            onValueChange = { debtSearch = it },
+                            label = { Text("بحث باسم الجهة أو الغرض...") },
+                            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("debt_search_input")
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(
+                                "all" to "الكل",
+                                "out" to "عليه",
+                                "in" to "له"
+                            ).forEach { (key, label) ->
+                                FilterChip(
+                                    selected = debtDirFilter == key,
+                                    onClick = { debtDirFilter = key },
+                                    label = { Text(label, maxLines = 1) },
+                                    modifier = Modifier.weight(1f).testTag("debt_filter_$key")
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val combinedGroups = buildList {
+                    if (debtDirFilter == "all" || debtDirFilter == "out") {
+                        state.creditorGroups.forEach { add(it to false) }
+                    }
+                    if (debtDirFilter == "all" || debtDirFilter == "in") {
+                        state.receivableGroups.forEach { add(it to true) }
+                    }
+                }.filter { (group, _) ->
+                    val q = debtSearch.trim()
+                    if (q.isEmpty()) true
+                    else group.creditor.contains(q, ignoreCase = true) ||
+                        group.debts.any { it.item.contains(q, ignoreCase = true) || it.activity.contains(q, ignoreCase = true) }
+                }
+
+                if (combinedGroups.isEmpty()) {
                     item {
                         EmptyStateCard(
-                            title = "لا توجد ديون مسجلة حالياً",
-                            description = "جميع ديون المحلات والفواتير مسددة.",
+                            title = "لا توجد ديون أو مستحقات مطابقة",
+                            description = "جميع الديون المسجلة مسددة أو لا توجد نتائج مطابقة للبحث.",
                             icon = Icons.Rounded.CheckCircle
                         )
                     }
                 } else {
-                    items(state.creditorGroups, key = { it.creditor }) { group ->
-                        var expanded by remember { mutableStateOf(false) }
+                    items(
+                        items = combinedGroups,
+                        key = { (group, isRec) -> "${if (isRec) "in" else "out"}_${group.creditor}" }
+                    ) { (group, isRec) ->
+                        var expanded by remember { mutableStateOf(true) }
+                        val accentColor = if (isRec) IncomeGreen else ExpenseRed
+                        val activityTag = group.debts.firstOrNull()?.activity?.takeIf { it.isNotBlank() } ?: "عام"
                         SandooqiCard {
                             Row(
                                 modifier = Modifier
@@ -189,32 +585,62 @@ fun DebtsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text(group.creditor, style = MaterialTheme.typography.titleMedium)
-                                        if (group.hasOverdue) {
-                                            Surface(color = ExpenseRed.copy(alpha = 0.14f), shape = RoundedCornerShape(8.dp)) {
-                                                Text(
-                                                    "متأخر",
-                                                    color = ExpenseRed,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(group.creditor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                        Surface(
+                                            color = accentColor.copy(alpha = 0.14f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isRec) "له" else "عليه",
+                                                color = accentColor,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
                                         }
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(
+                                                text = activityTag,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = "(${group.debts.size})",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
+                                    Spacer(Modifier.height(4.dp))
                                     Text(
-                                        "المتبقي: ${MoneyFormat.formatDzd(group.remainingCents, privacy)} من أصل ${MoneyFormat.formatDzd(group.totalAmountCents, privacy)} • اضغط للتفاصيل",
+                                        text = "الأصلي: ${MoneyFormat.formatDzd(group.totalAmountCents, privacy)} • المدفوع: ${MoneyFormat.formatDzd(group.paidCents, privacy)} • المتبقي ${MoneyFormat.formatDzd(group.remainingCents, privacy)}",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = if (group.remainingCents > 0L) ExpenseRed else IncomeGreen
+                                        color = if (group.remainingCents > 0L) accentColor else IncomeGreen
                                     )
                                 }
-                                if (group.remainingCents > 0L) {
-                                    Button(
-                                        onClick = {
-                                            payingCreditor = group
-                                            payAmountText = MoneyFormat.formatNumberOnly(group.remainingCents)
-                                        }
-                                    ) { Text("تسديد") }
+                            }
+                            if (group.remainingCents > 0L) {
+                                Spacer(Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        payingCreditor = group to isRec
+                                        payAmountText = MoneyFormat.formatNumberOnly(group.remainingCents)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isRec) IncomeGreen else MaterialTheme.colorScheme.primary
+                                    ),
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                                ) {
+                                    Icon(Icons.Rounded.CreditCard, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(if (isRec) "تحصيل دفعة" else "تسديد دفعة")
                                 }
                             }
                             if (expanded) {
@@ -222,100 +648,66 @@ fun DebtsScreen(
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                                 group.debts.forEach { d ->
                                     val remItem = (d.amountCents - d.paidCents).coerceAtLeast(0L)
+                                    val overdueDays = if (remItem > 0L && d.dueDateISO.isNotBlank()) {
+                                        (DateUtils.daysBetweenISO(d.dueDateISO, today) ?: 0).coerceAtLeast(0)
+                                    } else 0
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text("${d.item} (${d.dateISO})", style = MaterialTheme.typography.bodySmall)
                                             Text(
-                                                "متبقي: ${MoneyFormat.formatDzd(remItem, privacy)}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = if (remItem > 0L) ExpenseRed else IncomeGreen
+                                                text = "${d.item} • ${d.activity} • ${d.dateISO}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold
                                             )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${MoneyFormat.formatDzd(d.amountCents, privacy)} (مدفوع ${MoneyFormat.formatDzd(d.paidCents, privacy)}) • متبقي ${MoneyFormat.formatDzd(remItem, privacy)}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = if (remItem > 0L) accentColor else IncomeGreen
+                                                )
+                                                if (overdueDays > 0) {
+                                                    Text(
+                                                        text = "(متأخر ${overdueDays}ي)",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = GoldAccent,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                            if (d.photoUri.isNotBlank()) {
+                                                Spacer(Modifier.height(4.dp))
+                                                AsyncImage(
+                                                    model = d.photoUri,
+                                                    contentDescription = "صورة ورقة الكريدي",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(44.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .clickable { previewPhotoUri = d.photoUri }
+                                                )
+                                            }
                                         }
-                                        IconButton(onClick = { viewModel.deleteDebt(d.id) }) {
-                                            Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف الدين")
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (remItem > 0L) {
+                                                OutlinedButton(
+                                                    onClick = { viewModel.paySingleDebt(d) },
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    modifier = Modifier.heightIn(min = 40.dp).testTag("pay_single_debt_${d.id}")
+                                                ) {
+                                                    Text(if (isRec) "تحصيل البند" else "تسديد البند", maxLines = 1)
+                                                }
+                                            }
+                                            IconButton(onClick = { viewModel.deleteDebt(d.id) }) {
+                                                Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف الدين")
+                                            }
                                         }
                                     }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Rent section (له وعليه)
-                item {
-                    SandooqiCard {
-                        SectionHeader(
-                            title = "حركة الكراء (له وعليه)",
-                            subtitle = "كراء السكن أو المحلات التجارية",
-                            icon = Icons.Rounded.HomeWork
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(selected = rentIsReceivable, onClick = { rentIsReceivable = true }, label = { Text("كراء له (إيجار لي)") }, modifier = Modifier.weight(1f))
-                            FilterChip(selected = !rentIsReceivable, onClick = { rentIsReceivable = false }, label = { Text("كراء عليه (التزام)") }, modifier = Modifier.weight(1f))
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            CatalogDefaults.rentUnits.forEach { unit ->
-                                FilterChip(
-                                    selected = rentUnit == unit,
-                                    onClick = { rentUnit = unit },
-                                    label = { Text(unit) }
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(value = rentParty, onValueChange = { rentParty = it }, label = { Text("المستأجر / المؤجر") }, singleLine = true, modifier = Modifier.weight(1f))
-                            OutlinedTextField(
-                                value = rentAmount,
-                                onValueChange = { rentAmount = it },
-                                label = { Text("المبلغ (دج)") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = rentImmediate, onCheckedChange = { rentImmediate = it })
-                            Text("تحصيل / دفع فوري في الخزينة العائلية", style = MaterialTheme.typography.bodySmall)
-                        }
-                        Button(
-                            onClick = {
-                                val c = MoneyFormat.parseToCents(rentAmount) ?: 0L
-                                viewModel.addRentRecord(rentUnit, rentParty, c, rentIsReceivable, rentImmediate, "")
-                                if (rentParty.isNotBlank() && c > 0L) {
-                                    rentParty = ""; rentAmount = ""
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                        ) { Text("حفظ حركة الكراء") }
-                    }
-                }
-
-                items(rentReceivables, key = { it.id }) { r ->
-                    SandooqiCard {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("مستحق لك: ${r.creditor} (${r.rentUnit})", style = MaterialTheme.typography.titleSmall)
-                                Text(MoneyFormat.formatDzd(r.amountCents - r.paidCents, privacy), color = IncomeGreen, fontWeight = FontWeight.Bold)
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Button(onClick = { viewModel.collectRentReceivable(r) }) { Text("تحصيل") }
-                                IconButton(onClick = { viewModel.deleteDebt(r.id) }) {
-                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "حذف")
                                 }
                             }
                         }
@@ -641,17 +1033,17 @@ fun DebtsScreen(
     }
 
     if (payingCreditor != null) {
-        val group = payingCreditor!!
+        val (group, isRec) = payingCreditor!!
         AlertDialog(
             onDismissRequest = { payingCreditor = null },
-            title = { Text("تسديد دين: ${group.creditor}") },
+            title = { Text(if (isRec) "تحصيل مستحق: ${group.creditor}" else "تسديد دين: ${group.creditor}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("المتبقي: ${MoneyFormat.formatDzd(group.remainingCents, privacy)}")
                     OutlinedTextField(
                         value = payAmountText,
                         onValueChange = { payAmountText = it },
-                        label = { Text("المبلغ المدفوع (دج)") },
+                        label = { Text(if (isRec) "المبلغ المحصّل (دج)" else "المبلغ المدفوع (دج)") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                     )
@@ -660,11 +1052,32 @@ fun DebtsScreen(
             confirmButton = {
                 Button(onClick = {
                     val cents = MoneyFormat.parseToCents(payAmountText) ?: 0L
-                    viewModel.payCreditorAmount(group.creditor, cents)
+                    viewModel.payCreditorAmount(group.creditor, cents, isRec)
                     payingCreditor = null
-                }) { Text("تسديد من الخزينة") }
+                }) { Text(if (isRec) "إضافة للخزينة" else "تسديد من الخزينة") }
             },
             dismissButton = { TextButton(onClick = { payingCreditor = null }) { Text("إلغاء") } }
+        )
+    }
+
+    if (!previewPhotoUri.isNullOrBlank()) {
+        AlertDialog(
+            onDismissRequest = { previewPhotoUri = null },
+            title = { Text("صورة ورقة الكريدي") },
+            text = {
+                AsyncImage(
+                    model = previewPhotoUri,
+                    contentDescription = "معاينة ورقة الكريدي",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { previewPhotoUri = null }) { Text("إغلاق") }
+            }
         )
     }
 }

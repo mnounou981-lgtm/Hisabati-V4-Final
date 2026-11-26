@@ -16,6 +16,12 @@ data class QuickExpensePreset(
     val category: String
 )
 
+data class BudgetEnvelopeItem(
+    val id: Long,
+    val name: String,
+    val amountCents: Long
+)
+
 object CatalogDefaults {
     val categoryTabs: List<Pair<String, String>> = listOf(
         "veg" to "خضر",
@@ -23,6 +29,7 @@ object CatalogDefaults {
         "wmeat" to "لحوم بيضاء",
         "rmeat" to "لحوم حمراء",
         "fish" to "أسماك",
+        "spices" to "توابل",
         "food" to "مواد غذائية"
     )
 
@@ -68,6 +75,19 @@ object CatalogDefaults {
         CatalogProduct("سردين", "🐟", "fish", "أسماك", "كغ"),
         CatalogProduct("سمك دوراد/أبيض", "🐟", "fish", "أسماك", "كغ"),
         CatalogProduct("جمبري (كروفيت)", "🦐", "fish", "أسماك", "كغ"),
+        // توابل
+        CatalogProduct("فلفل أسود", "⚫", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("كمون", "🌿", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("راس الحانوت", "🌶️", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("كركم", "🟡", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("فلفل عكري (بابريكا)", "🌶️", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("زنجبيل", "🫚", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("قرفة", "🪵", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("زعفران", "🧡", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("قصبر (كزبرة يابسة)", "🌿", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("كروية", "🌱", "spices", "توابل وبهارات", "غ"),
+        CatalogProduct("زعتر ورند", "🍃", "spices", "توابل وبهارات", "حزمة"),
+        CatalogProduct("ثوم وبصل بودرة", "🧄", "spices", "توابل وبهارات", "علبة"),
         // مواد غذائية
         CatalogProduct("خبز", "🥖", "food", "مواد غذائية", "حبة"),
         CatalogProduct("حليب", "🥛", "food", "مواد غذائية", "لتر"),
@@ -91,7 +111,7 @@ object CatalogDefaults {
     val units = listOf("حبة", "كغ", "غ", "لتر", "مل", "علبة", "حزمة")
 
     val expenseCategories = listOf(
-        "مواد غذائية", "خضر وفواكه", "لحوم وأسماك", "نقل ومواصلات",
+        "مواد غذائية", "خضر وفواكه", "لحوم وأسماك", "توابل وبهارات", "نقل ومواصلات",
         "فواتير", "صحة ودواء", "ملابس", "تعليم", "صيانة", "أخرى"
     )
 
@@ -104,9 +124,10 @@ object CatalogDefaults {
 
     val rentUnits = listOf(
         "كراء سكن",
+        "كراء محل",
+        "كراء كراج",
         "كراء محل رقم 01",
-        "كراء محل رقم 02",
-        "كراء محل رقم 03"
+        "كراء محل رقم 02"
     )
 
     val sewingStages = listOf(
@@ -116,9 +137,14 @@ object CatalogDefaults {
     val defaultQuickExpenses = listOf(
         QuickExpensePreset(1L, "🥖", "خبز", 40_00L, "مواد غذائية"),
         QuickExpensePreset(2L, "🥛", "حليب", 120_00L, "مواد غذائية"),
-        QuickExpensePreset(3L, "🚌", "نقل", 50_00L, "نقل ومواصلات"),
-        QuickExpensePreset(4L, "☕", "قهوة", 100_00L, "مواد غذائية"),
+        QuickExpensePreset(3L, "☕", "قهوة", 100_00L, "مواد غذائية"),
+        QuickExpensePreset(4L, "🚕", "نقل", 200_00L, "نقل ومواصلات"),
         QuickExpensePreset(5L, "🥦", "خضر سريعة", 300_00L, "خضر وفواكه")
+    )
+
+    val defaultBudgetEnvelopes = listOf(
+        BudgetEnvelopeItem(1L, "الكراء", 0L),
+        BudgetEnvelopeItem(2L, "المصروف", 0L)
     )
 
     val seasonalOccasions = listOf(
