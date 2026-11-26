@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">صندوقي</string>
+    <string name="app_subtitle">إدارة مالية ذكية</string>
+    <string name="cd_app_logo">شعار صندوقي</string>
+    <string name="cd_toggle_theme">تبديل الوضع الليلي</string>
+    <string name="cd_toggle_privacy">إخفاء أو إظهار الأرصدة</string>
+    <string name="cd_voice_entry">تسجيل سريع بالصوت</string>
+    <string name="cd_global_search">بحث شامل</string>
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_treasury">الخزينة</string>
+    <string name="nav_expenses">المصاريف</string>
+    <string name="nav_debts">الديون</string>
+    <string name="nav_budget">الميزانية</string>
+    <string name="nav_sewing">الخياطة</string>
+    <string name="nav_reports">التقارير</string>
+    <string name="nav_tools">الأدوات</string>
+</resources>

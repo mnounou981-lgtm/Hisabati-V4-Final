@@ -1,0 +1,6 @@
+{
+  "name": "صندوقي",
+  "description": "تطبيق محلي ذكي لإدارة الميزانية العائلية والشخصية وحساب الخياطة والديون والادخار والتقارير.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
